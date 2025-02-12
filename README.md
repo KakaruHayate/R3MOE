@@ -25,7 +25,7 @@ pip install -r requirements.txt
     ```
 2. Run preprocessing command
     ```bash
-    python recipes/mouth_opening/preprocessing.py <SOURCE_DATA_DIR> <TARGET_DATA_DIR>
+    python recipes/mouth_opening/preprocess.py <SOURCE_DATA_DIR> <TARGET_DATA_DIR>
     ```
     where `<SOURCE_DATA_DIR>` is the directory containing the raw data, and `<TARGET_DATA_DIR>` is the directory to save the preprocessed data.
 

@@ -6,26 +6,6 @@ import numpy as np
 import torch.utils.data
 
 
-class DotDict(dict):
-    """
-    DotDict, used for config
-
-    Example:
-        # >>> config = DotDict({'a': 1, 'b': {'c': 2}}})
-        # >>> config.a
-        # 1
-        # >>> config.b.c
-        # 2
-    """
-
-    def __getattr__(*args):
-        val = dict.get(*args)
-        return DotDict(val) if type(val) is dict else val
-
-    __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
-
-
 class CurveTrainingDataset(torch.utils.data.Dataset):
     def __init__(
             self,
@@ -35,13 +15,15 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
     ):
         if not isinstance(root_dir, pathlib.Path):
             root_dir = pathlib.Path(root_dir)
+        with open(root_dir / 'metadata.json', 'r', encoding='utf8') as f:
+            self.metadata = json.load(f)
         self.files = []
         with open(root_dir / 'train.txt', 'r', encoding='utf8') as f:
             for line in f:
                 self.files.append(root_dir / line.strip())
-        with open(root_dir / 'metadata.json', 'r', encoding='utf8') as f:
-            self.metadata = DotDict(json.load(f))
         self.lengths = np.load(root_dir / 'lengths.npy')
+        if len(self.files) != len(self.lengths):
+            raise ValueError("Elements in train.txt and lengths.npy do not match!")
         self.crop_size = crop_size
         self.volume_aug_rate = volume_aug_rate
 

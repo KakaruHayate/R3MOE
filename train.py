@@ -168,7 +168,7 @@ def main():
 
     device = torch.device('cpu')
     model_args = {
-        'in_dims': train_dataset.metadata.mel_bins,
+        'in_dims': train_dataset.metadata['mel_bins'],
         'out_dims': args.out_dims,
         'vmin': args.vmin,
         'vmax': args.vmax,
@@ -181,7 +181,7 @@ def main():
         'conv_dropout': args.conv_dropout,
         'attn_dropout': args.attn_dropout
     }
-    model = models.CFNaiveCurveEstimator(**model_args)
+    model = nets.CFNaiveCurveEstimator(**model_args)
     if args.pretrained_model is not None:
         print("loading pretrained model: " + args.pretrained_model)
         model.load_state_dict(torch.load(args.pretrained_model, map_location=device))
@@ -206,7 +206,7 @@ def main():
     saver = Saver(args.exp_name)
     with open(saver.exp_dir / 'config.yaml', 'w') as f:
         yaml.safe_dump({
-            "dataset_args": train_dataset.metadata,
+            "dataset_args": dict(train_dataset.metadata),
             "model_args": model_args
         }, f)
 

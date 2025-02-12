@@ -8,7 +8,6 @@ import pathlib
 import time
 
 import torch
-import yaml
 from torch.utils.tensorboard import SummaryWriter
 
 
