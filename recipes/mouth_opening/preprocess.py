@@ -1,5 +1,6 @@
 import json
 import pathlib
+import sys
 
 import click
 import librosa
@@ -9,6 +10,7 @@ import torch
 import tqdm
 from scipy.interpolate import interp1d
 
+sys.path.append(pathlib.Path(__file__).parent.parent.parent.as_posix())
 from lib.transforms import PitchAdjustableMelSpectrogram, dynamic_range_compression_torch
 
 JAW_OPEN = 0
