@@ -1,0 +1,11 @@
+click
+einops>=0.8.0
+funasr==1.2.3
+librosa<1.10.0
+local_attention>=1.11.0
+matplotlib
+numpy<2.0.0
+pandas
+PyYAML
+scipy>=1.10.0
+tqdm
