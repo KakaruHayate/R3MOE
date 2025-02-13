@@ -92,26 +92,26 @@ def dynamic_range_compression_torch(x, C=1, clip_val=1e-9):
     return torch.log(torch.clamp(x, min=clip_val) * C)
 
 
-def curve2latent(curve: torch.Tensor, dims: int, vmin: float, vmax: float, deviation: float):
+def gaussian_blur_encode(curve: torch.Tensor, dims: int, vmin: float, vmax: float, deviation: float):
     interval = (vmax - vmin) / dims
     sigma = deviation / interval
     mu = (curve[:, :, None] - vmin) / interval
     x = torch.arange(dims, device=curve.device).float().reshape(1, 1, -1)  # [1, 1, N]
-    latent = ((x - mu) / sigma).pow(2).div(-2).exp()  # gaussian blur, [B, T_n, N]
-    return latent
+    probs = ((x - mu) / sigma).pow(2).div(-2).exp()  # gaussian blur, [B, T_n, N]
+    return probs
 
 
-def latent2curve(latent: torch.Tensor, vmin: float, vmax: float, deviation: float):
-    dims = int(latent.shape[-1])
+def gaussian_blur_decode(probs: torch.Tensor, vmin: float, vmax: float, deviation: float):
+    dims = int(probs.shape[-1])
     interval = (vmax - vmin) / dims
     width = int(3 * deviation / interval)  # 3 * sigma
-    idx = torch.arange(dims, device=latent.device)[None, None, :]  # [1, 1, N]
+    idx = torch.arange(dims, device=probs.device)[None, None, :]  # [1, 1, N]
     idx_values = idx * interval + vmin
-    center = torch.argmax(latent, dim=-1, keepdim=True)  # [B, T, 1]
+    center = torch.argmax(probs, dim=-1, keepdim=True)  # [B, T, 1]
     start = torch.clip(center - width, min=0)  # [B, T, 1]
     end = torch.clip(center + width + 1, max=dims)  # [B, T, 1]
     idx_masks = (idx >= start) & (idx < end)  # [B, T, N]
-    weights = latent * idx_masks  # [B, T, N]
+    weights = probs * idx_masks  # [B, T, N]
     product_sum = torch.sum(weights * idx_values, dim=2)  # [B, T]
     weight_sum = torch.sum(weights, dim=2)  # [B, T]
     curve = product_sum / (weight_sum + (weight_sum == 0))  # avoid dividing by zero, [B, T]
