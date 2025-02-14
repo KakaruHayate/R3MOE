@@ -14,6 +14,15 @@ from logger import utils
 from logger.saver import Saver
 
 
+def cacl_r_squared(y_true, y_pred):
+    mean_y_true = torch.mean(y_true)
+    ss_total = torch.sum((y_true - mean_y_true) ** 2)
+    ss_res = torch.sum((y_pred - y_true) ** 2)
+    r2 = 1 - (ss_res / ss_total) if ss_total != 0 else 0
+    
+    return r2
+
+
 def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     model.train()
     sum_loss = 0
@@ -64,6 +73,10 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
     model.eval()
 
     sum_loss = 0
+    sum_mae = 0
+    val_num = 0
+    gt_cache = []
+    pred_cache = []
     criterion = nn.MSELoss()
 
     with torch.no_grad():
@@ -78,6 +91,10 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
             loss = criterion(l_pred, l_gt)
             sum_loss += loss.item() * len(X_gt)
             y_pred = model.denormalize(l_pred)
+            gt_cache.append(y_gt)
+            pred_cache.append(y_pred)
+            sum_mae += torch.nn.functional.l1_loss(y_pred, y_gt).detach().cpu().numpy()
+            
             if not draw:
                 continue
             spec_draw = X_gt[0].cpu().numpy()
@@ -94,11 +111,16 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
                     curve_pred=curve_pred_draw
                 )
             })
+            val_num += 1
 
     mean_loss = sum_loss / len(dataloader.dataset)
-    saver.log_info(' --- <validation> --- loss: {:.6f} '.format(mean_loss))
+    r_squared = cacl_r_squared(torch.cat(gt_cache,dim=1), torch.cat(pred_cache,dim=1))
+    mean_mae = sum_mae / val_num
+    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(mean_loss, mean_mae, r_squared))
     saver.log_value({
-        'validation/loss': mean_loss
+        'validation/loss': mean_loss, 
+        'validation/mae': mean_mae, 
+        'validation/r_squared': r_squared
     })
     return mean_loss
 
