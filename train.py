@@ -19,7 +19,7 @@ def cacl_r_squared(y_true, y_pred):
     ss_total = torch.sum((y_true - mean_y_true) ** 2)
     ss_res = torch.sum((y_pred - y_true) ** 2)
     r2 = 1 - (ss_res / ss_total) if ss_total != 0 else 0
-    
+
     return r2
 
 
@@ -81,7 +81,7 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
 
     with torch.no_grad():
         for idx, (X_gt, y_gt) in enumerate(
-                tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)
+                tqdm.tqdm(dataloader, total=len(dataloader.dataset), desc='validation', leave=False)
         ):
             # X: [B, T, in_dims], y: [B, T]
             X_gt = X_gt.to(device)
@@ -94,7 +94,7 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
             gt_cache.append(y_gt)
             pred_cache.append(y_pred)
             sum_mae += torch.nn.functional.l1_loss(y_pred, y_gt).detach().cpu().numpy()
-            
+
             if not draw:
                 continue
             spec_draw = X_gt[0].cpu().numpy()
@@ -111,15 +111,17 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
                     curve_pred=curve_pred_draw
                 )
             })
-            val_num += 1
 
     mean_loss = sum_loss / len(dataloader.dataset)
-    r_squared = cacl_r_squared(torch.cat(gt_cache,dim=1), torch.cat(pred_cache,dim=1))
-    mean_mae = sum_mae / val_num
-    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(mean_loss, mean_mae, r_squared))
+    r_squared = cacl_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
+    mean_mae = sum_mae / len(dataloader.dataset)
+    saver.log_info(
+        ' --- <validation> --- loss: {:.6f} MAE: {:.6f} R^2: {:.6f}'
+        .format(mean_loss, mean_mae, r_squared)
+    )
     saver.log_value({
-        'validation/loss': mean_loss, 
-        'validation/mae': mean_mae, 
+        'validation/loss': mean_loss,
+        'validation/mae': mean_mae,
         'validation/r_squared': r_squared
     })
     return mean_loss
