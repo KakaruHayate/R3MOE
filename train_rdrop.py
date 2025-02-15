@@ -31,19 +31,23 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     sum_loss = 0
     # criterion = nn.MSELoss()
     criterion = nn.HuberLoss(reduction='mean')
+    criterion2 = nn.MSELoss()
 
     for itr, (X_gt, y_gt) in enumerate(dataloader):
         # X: [B, T, in_dims], y: [B, T]
         saver.global_step_increment()
         X_gt = X_gt.to(device)
         y_gt = y_gt.to(device)
-        l_pred = model(X_gt)
+        l_pred1 = model(X_gt)
+        l_pred2 = model(X_gt.detach())
         l_gt = model.normalize(y_gt)
-        loss = criterion(l_pred, l_gt)
+        loss = (criterion(l_pred1, l_gt) + criterion(l_pred2, l_gt)) / 2
+        r_drop_loss = criterion2(l_pred1, l_pred2)
+        total_loss = loss + 0.5 * r_drop_loss
         current_lr = optimizer.param_groups[0]['lr']
         if saver.global_step % 10 == 0:
             saver.log_info(
-                'epoch: {} | {:3d}/{:3d} | {} | batch/s: {:.2f} | lr: {:.6} | loss: {:.6f} | time: {} | step: {}'
+                'epoch: {} | {:3d}/{:3d} | {} | batch/s: {:.2f} | lr: {:.6} | huber_loss: {:.6f} | r_drop_loss: {:.6f} | total_loss: {:.6f} | time: {} | step: {}'
                 .format(
                     epoch,
                     itr,
@@ -52,6 +56,8 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
                     10 / saver.get_interval_time(),
                     current_lr,
                     loss.item(),
+                    r_drop_loss.item(),
+                    total_loss.item(),
                     saver.get_total_time(),
                     saver.global_step
                 )
@@ -59,15 +65,17 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         if saver.global_step % 100 == 0:
             saver.log_value({
                 'train/epoch': epoch,
-                'train/loss': loss.item(),
+                'train/huber_loss': loss.item(),
+                'train/r_drop_loss': r_drop_loss.item(),
+                'train/total_loss': total_loss.item(),
                 'train/lr': current_lr
             })
 
-        loss.backward()
+        total_loss.backward()
         optimizer.step()
         model.zero_grad()
 
-        sum_loss += loss.item() * len(X_gt)
+        sum_loss += total_loss.item() * len(X_gt)
 
     return sum_loss / len(dataloader.dataset)
 
@@ -115,7 +123,7 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
             })
 
     mean_loss = sum_loss / len(dataloader.dataset)
-    r_squared = calc_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
+    r_squared = calc_r_squared(torch.cat(gt_cache,dim=1), torch.cat(pred_cache,dim=1))
     mean_mae = sum_mae / len(dataloader.dataset)
     saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(mean_loss, mean_mae, r_squared))
     saver.log_value({
@@ -146,6 +154,7 @@ def main():
     p.add_argument('--plot_epoch_interval', type=int, default=1)
     p.add_argument('--save_epoch_interval', type=int, default=1)
     args = p.parse_args()
+    print(args)
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
