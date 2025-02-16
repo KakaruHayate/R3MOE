@@ -22,7 +22,14 @@ LIPS_DISTANCE = 3
 @click.command()
 @click.argument('source_dir', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.argument('target_dir', type=click.Path(path_type=pathlib.Path))
-@click.option('--val_num', default=5, type=int, help='Number of validation samples.')
+@click.option(
+    '--val_list', type=click.Path(exists=True, path_type=pathlib.Path),
+    help='Validation file list in a text file. Use relative path to the source directory, one file per line.'
+)
+@click.option(
+    '--val_num', default=5, type=int,
+    help='Number of validation samples for random selection if val_list is not provided.'
+)
 @click.option(
     '--attr_type', default=CORRECTED_JAW_OPEN, type=int,
     help='Attribute type for processing (0: jawOpen, 1: mouthClose, 2: jawOpen * (1 - mouthClose), 3: LipsDistance).'
@@ -37,6 +44,7 @@ LIPS_DISTANCE = 3
 def preprocess(
         source_dir: pathlib.Path,
         target_dir: pathlib.Path,
+        val_list: pathlib.Path,
         val_num: int,
         attr_type: int,
         use_vad: bool,
@@ -135,7 +143,15 @@ def preprocess(
                 len_list.append(mel.shape[0])
                 npz_list.append(target_file.relative_to(target_dir).as_posix())
     # split training and validation set
-    val_indices = sorted(numpy.random.choice(len(len_list), val_num, replace=False))
+    if val_list is not None:
+        with open(val_list, "r", encoding="utf8") as f:
+            val_files = {pathlib.Path(line.strip()).with_suffix(".npz").as_posix() for line in f}
+        val_indices = []
+        for i, npz_file in enumerate(npz_list):
+            if npz_file in val_files:
+                val_indices.append(i)
+    else:
+        val_indices = sorted(numpy.random.choice(len(len_list), val_num, replace=False))
     lengths = []
     with open(target_dir / "train.txt", "w") as f:
         for i, npz_file in enumerate(npz_list):
