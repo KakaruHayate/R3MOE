@@ -118,6 +118,7 @@ def preprocess(
             offset = round(sample_rate * xs[0])
             size = round(sample_rate * (xs[-1] - xs[0]))
             xs -= xs[0]
+            error_value_segment = process_error_value(xs, ys)
             # read audio data
             num_samples = None
             for audio_file in csv_file.parent.glob("*.wav"):
@@ -137,7 +138,7 @@ def preprocess(
                 # interpolate mouth opening data
                 interp_fn = interp1d(xs, ys, kind="linear", fill_value="extrapolate")
                 t_mel = numpy.linspace(0, len(audio) / sample_rate, mel.shape[0])
-                curve = numpy.astype(interp_fn(t_mel), numpy.float32)
+                curve = numpy.ndarray.astype(interp_fn(t_mel), numpy.float32)
                 if use_vad:
                     # mask non-vocal parts using VAD
                     mask = numpy.zeros_like(curve)
@@ -147,6 +148,14 @@ def preprocess(
                         end = min(round(end_ms / 1000 * sample_rate / hop_size), mask.shape[0])
                         mask[start: end] = 1
                     curve *= mask
+                # error value process
+                frame_indices = []
+                for error_start, error_end in error_value_segment:
+                    error_start = round(error_start * sample_rate / hop_size)
+                    error_end = round(error_end * sample_rate / hop_size)
+                    frame_indices.extend(range(error_start, error_end + 1))
+                mel = numpy.delete(mel, frame_indices, axis=0)
+                curve = numpy.delete(curve, frame_indices, axis=0)
                 # save npz
                 target_file = target_dir / audio_file.relative_to(source_dir).with_suffix(".npz")
                 target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +184,18 @@ def preprocess(
     numpy.save(target_dir / "lengths.npy", lengths)
     with open(target_dir / "metadata.json", "w") as f:
         json.dump(metadata, f)
+
+
+def process_error_value(timestamps, values):
+    error_value_segment = []
+    first_error_value = values[0]
+    start_of_error = timestamps[0]
+    for i in range(1, len(values)):
+        if values[i] != first_error_value:
+            error_value_segment.append((start_of_error, timestamps[i]))
+            break
+
+    return error_value_segment
 
 
 if __name__ == "__main__":
