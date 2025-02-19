@@ -16,7 +16,8 @@ from lib.transforms import PitchAdjustableMelSpectrogram, dynamic_range_compress
 JAW_OPEN = 0
 MOUTH_CLOSE = 1
 CORRECTED_JAW_OPEN = 2  # jawOpen * (1 - mouthClose)
-LIPS_DISTANCE = 3
+SUBTRACTED_JAW_OPEN = 3  # jawOpen - mouthClose
+LIPS_DISTANCE = 4
 
 
 @click.command()
@@ -31,8 +32,15 @@ LIPS_DISTANCE = 3
     help='Number of validation samples for random selection if val_list is not provided.'
 )
 @click.option(
-    '--attr_type', default=CORRECTED_JAW_OPEN, type=int,
-    help='Attribute type for processing (0: jawOpen, 1: mouthClose, 2: jawOpen * (1 - mouthClose), 3: LipsDistance).'
+    '--attr_type', default=SUBTRACTED_JAW_OPEN, type=int,
+    help=(
+            'Attribute type for processing '
+            '[0: jawOpen, 1: mouthClose, 2: jawOpen * (1 - mouthClose), '
+            '3: jawOpen - mouthClose), 4. LipsDistance].')
+)
+@click.option(
+    '--subtraction_offset', default=0.05, type=float,
+    help='Offset for subtracted jawOpen attribute (X = jawOpen - mouthClose + offset).'
 )
 @click.option('--use_vad', is_flag=True, help='Use VAD for voice activity detection.')
 @click.option('--sample_rate', default=16000, type=int, help='Sample rate for audio processing.')
@@ -47,6 +55,7 @@ def preprocess(
         val_list: pathlib.Path,
         val_num: int,
         attr_type: int,
+        subtraction_offset: float,
         use_vad: bool,
         sample_rate: int,
         mel_bins: int,
@@ -97,6 +106,8 @@ def preprocess(
                 ys = df["mouthClose"].values
             elif attr_type == CORRECTED_JAW_OPEN:
                 ys = df["jawOpen"].values * (1 - df["mouthClose"].values)
+            elif attr_type == SUBTRACTED_JAW_OPEN:
+                ys = numpy.clip(df["jawOpen"].values - df["mouthClose"].values + subtraction_offset, a_min=0, a_max=1)
             elif attr_type == LIPS_DISTANCE:
                 ys = df["LipsDistance"].values
             else:
