@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data
+import schedulefree
 import tqdm
 import yaml
 
@@ -14,10 +15,11 @@ from logger import utils
 from logger.saver import Saver
 
 
-def cacl_r_squared(y_true, y_pred):
+def calc_r_squared(y_true, y_pred):
+    # R-squared: r^2 = 1 - (SSE / SST)
+    ss_res = torch.sum((y_pred - y_true) ** 2)
     mean_y_true = torch.mean(y_true)
     ss_total = torch.sum((y_true - mean_y_true) ** 2)
-    ss_res = torch.sum((y_pred - y_true) ** 2)
     r2 = 1 - (ss_res / ss_total) if ss_total != 0 else 0
 
     return r2
@@ -25,8 +27,10 @@ def cacl_r_squared(y_true, y_pred):
 
 def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     model.train()
+    optimizer.train()
     sum_loss = 0
-    criterion = nn.MSELoss()
+    # criterion = nn.MSELoss()
+    criterion = nn.HuberLoss(reduction='mean')
 
     for itr, (X_gt, y_gt) in enumerate(dataloader):
         # X: [B, T, in_dims], y: [B, T]
@@ -36,7 +40,6 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         l_pred = model(X_gt)
         l_gt = model.normalize(y_gt)
         loss = criterion(l_pred, l_gt)
-
         current_lr = optimizer.param_groups[0]['lr']
         if saver.global_step % 10 == 0:
             saver.log_info(
@@ -69,19 +72,19 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     return sum_loss / len(dataloader.dataset)
 
 
-def validate_epoch(dataloader, model, device, saver, draw=False):
+def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
     model.eval()
+    optimizer.eval()
 
     sum_loss = 0
     sum_mae = 0
-    val_num = 0
-    gt_cache = []
+    gt_cache = [] # 在整个验证集取r^2，所以把gt和pred先cache在concat到一起
     pred_cache = []
     criterion = nn.MSELoss()
 
     with torch.no_grad():
         for idx, (X_gt, y_gt) in enumerate(
-                tqdm.tqdm(dataloader, total=len(dataloader.dataset), desc='validation', leave=False)
+                tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)
         ):
             # X: [B, T, in_dims], y: [B, T]
             X_gt = X_gt.to(device)
@@ -94,7 +97,6 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
             gt_cache.append(y_gt)
             pred_cache.append(y_pred)
             sum_mae += torch.nn.functional.l1_loss(y_pred, y_gt).detach().cpu().numpy()
-
             if not draw:
                 continue
             spec_draw = X_gt[0].cpu().numpy()
@@ -113,12 +115,9 @@ def validate_epoch(dataloader, model, device, saver, draw=False):
             })
 
     mean_loss = sum_loss / len(dataloader.dataset)
-    r_squared = cacl_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
+    r_squared = calc_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
     mean_mae = sum_mae / len(dataloader.dataset)
-    saver.log_info(
-        ' --- <validation> --- loss: {:.6f} MAE: {:.6f} R^2: {:.6f}'
-        .format(mean_loss, mean_mae, r_squared)
-    )
+    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(mean_loss, mean_mae, r_squared))
     saver.log_value({
         'validation/loss': mean_loss,
         'validation/mae': mean_mae,
@@ -136,20 +135,13 @@ def main():
     p.add_argument('--batchsize', '-B', type=int, default=16)
     p.add_argument('--cropsize', '-C', type=int, default=128)
     p.add_argument('--learning_rate', '-l', type=float, default=0.0005)
-    p.add_argument('--lr_min', type=float, default=0.00001)
-    p.add_argument('--lr_decay_factor', type=float, default=0.9)
-    p.add_argument('--lr_decay_patience', type=int, default=6)
     p.add_argument('--gpu', '-g', type=int, default=-1)
-    p.add_argument('--seed', '-s', type=int, default=2019)
+    p.add_argument('--seed', '-s', type=int, default=3047)
     p.add_argument('--num_workers', '-w', type=int, default=4)
     p.add_argument('--epoch', '-E', type=int, default=200)
     p.add_argument('--hidden_dims', type=int, default=512)
-    p.add_argument('--n_layers', type=int, default=6)
-    p.add_argument('--n_heads', type=int, default=8)
-    p.add_argument('--use_fa_norm', action='store_true', default=True)
-    p.add_argument('--conv_only', action='store_true', default=True)
-    p.add_argument('--conv_dropout', type=float, default=0.)
-    p.add_argument('--attn_dropout', type=float, default=0.)
+    p.add_argument('--n_layers', type=int, default=2)
+    p.add_argument('--conv_dropout', type=float, default=0.2)
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
     p.add_argument('--plot_epoch_interval', type=int, default=1)
     p.add_argument('--save_epoch_interval', type=int, default=1)
@@ -190,13 +182,9 @@ def main():
         'vmax': args.vmax,
         'hidden_dims': args.hidden_dims,
         'n_layers': args.n_layers,
-        'n_heads': args.n_heads,
-        'use_fa_norm': args.use_fa_norm,
-        'conv_only': args.conv_only,
-        'conv_dropout': args.conv_dropout,
-        'attn_dropout': args.attn_dropout
+        'conv_dropout': args.conv_dropout
     }
-    model = nets.CFNaiveCurveEstimator(**model_args)
+    model = nets.BiLSTMCurveEstimator(**model_args)
     if args.pretrained_model is not None:
         print("loading pretrained model: " + args.pretrained_model)
         model.load_state_dict(torch.load(args.pretrained_model, map_location=device))
@@ -204,17 +192,9 @@ def main():
         device = torch.device('cuda:{}'.format(args.gpu))
         model.to(device)
 
-    optimizer = torch.optim.Adam(
-        filter(lambda parameter: parameter.requires_grad, model.parameters()),
+    optimizer = schedulefree.AdamWScheduleFree(
+        filter(lambda parameter: parameter.requires_grad, model.parameters()), 
         lr=args.learning_rate
-    )
-
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        factor=args.lr_decay_factor,
-        patience=args.lr_decay_patience,
-        threshold=1e-6,
-        min_lr=args.lr_min
     )
 
     saver = Saver(args.exp_name)
@@ -225,17 +205,17 @@ def main():
         }, f)
 
     params_count = utils.get_network_paras_amount({'model': model})
+    print(model)
     saver.log_info('--- model size ---')
     saver.log_info(params_count)
 
     for epoch in range(args.epoch):
         _ = train_epoch(train_dataloader, model, device, optimizer, saver, epoch)
         val_loss = validate_epoch(
-            val_dataloader, model, device, saver,
+            val_dataloader, model, device, optimizer, saver,
             draw=(epoch + 1) % args.plot_epoch_interval == 0
         )
 
-        scheduler.step(val_loss)
         if (epoch + 1) % args.save_epoch_interval == 0:
             saver.save_model(model, postfix=str(epoch))
 
