@@ -46,6 +46,8 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
     for itr in range(max_iters):
         saver.global_step_increment()
 
+        consistency_weight = get_current_consistency_weight(epoch)
+        
         X_gt, y_gt = next(iter_labeled)
         X_unlabel, X_unlabel1, X_unlabel2 = next(iter_unlabeled)
         # X_unlabel: teacher输入的无扰动样本
@@ -72,7 +74,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
         unlabeled_pred2 = model(X_unlabel2)
         consistency_loss = (criterion(unlabeled_pred1, fakelabel_pred) + criterion(unlabeled_pred2, fakelabel_pred)) * 0.5
 
-        total_loss = (loss + 0.5 * r_drop_loss) + consistency_loss * get_current_consistency_weight(epoch)
+        total_loss = (loss + 0.5 * r_drop_loss) + consistency_loss * consistency_weight
 
         current_lr = optimizer.param_groups[0]['lr']
         if saver.global_step % 10 == 0:
@@ -99,6 +101,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
                 'train/r_drop_loss': r_drop_loss.item(),
                 'train/consistency_loss': consistency_loss.item(),
                 'train/total_loss': total_loss.item(),
+                'train/consistency_weight': consistency_weight,
                 'train/lr': current_lr
             })
 
