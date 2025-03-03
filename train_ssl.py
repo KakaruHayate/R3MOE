@@ -11,7 +11,7 @@ import tqdm
 import yaml
 
 import logger.utils
-from lib import dataset, nets
+from lib import dataset, nets, ramps
 from logger import utils
 from logger.saver import Saver
 
@@ -24,6 +24,11 @@ def calc_r_squared(y_true, y_pred):
     r2 = 1 - (ss_res / ss_total) if ss_total != 0 else 0
 
     return r2
+
+
+def get_current_consistency_weight(epoch):
+    # Consistency ramp-up from https://arxiv.org/abs/1610.02242
+    return 100 * ramps.sigmoid_rampup(epoch, 5)
 
 
 def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, dataloader_unlabel):
@@ -67,7 +72,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
         unlabeled_pred2 = model(X_unlabel2)
         consistency_loss = (criterion(unlabeled_pred1, fakelabel_pred) + criterion(unlabeled_pred2, fakelabel_pred)) * 0.5
 
-        total_loss = (loss + 0.5 * r_drop_loss) + consistency_loss * 0.1
+        total_loss = (loss + 0.5 * r_drop_loss) + consistency_loss * get_current_consistency_weight(epoch)
 
         current_lr = optimizer.param_groups[0]['lr']
         if saver.global_step % 10 == 0:
