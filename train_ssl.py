@@ -267,7 +267,7 @@ def main():
     p.add_argument('--num_workers', '-w', type=int, default=4)
     p.add_argument('--epoch', '-E', type=int, default=200)
     p.add_argument('--hidden_dims', type=int, default=768)
-    p.add_argument('--n_layers', type=int, default=2)
+    p.add_argument('--n_layers', type=int, default=1)
     p.add_argument('--conv_dropout', type=float, default=0.2)
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
     p.add_argument('--plot_epoch_interval', type=int, default=1)
