@@ -35,9 +35,12 @@ class BiLSTMCurveEstimator(nn.Module):
         # Input stack, convert mel-spectrogram to hidden_dims
         self.input_stack = nn.Sequential(
             nn.Conv1d(in_dims, hidden_dims, 3, 1, 1, bias=False),
-            nn.BatchNorm1d(hidden_dims),
-            nn.ReLU(),
-            nn.Dropout(conv_dropout), 
+            # nn.BatchNorm1d(hidden_dims), 
+            # 注：batchnorm在不使用SSL时效果是优于groupnorm的，但是半监督训练时和训练方式似乎有冲突，因此沿用FCPE的做法
+            # nn.ReLU(),
+            nn.GroupNorm(4, hidden_dims), 
+            nn.LeakyReLU(),
+            nn.Dropout(conv_dropout), # 依赖这个dropout构建样本
             nn.Conv1d(hidden_dims, hidden_dims, 3, 1, 1, bias=False)
         )
         # LSTM
@@ -52,7 +55,7 @@ class BiLSTMCurveEstimator(nn.Module):
         self.output_proj = nn.Sequential(
             nn.Linear(hidden_dims * 2, hidden_dims),
             nn.ReLU(),
-            nn.Dropout(conv_dropout),
+            # nn.Dropout(conv_dropout),
             nn.Linear(hidden_dims, 1),
             nn.Sigmoid()
         )

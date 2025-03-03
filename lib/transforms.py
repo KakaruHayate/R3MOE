@@ -5,6 +5,22 @@ import torch.utils.data
 from librosa.filters import mel as librosa_mel_fn
 
 
+class PreEmphasis(torch.nn.Module):
+    def __init__(self, coefficient: float = 0.9375):
+        super().__init__()
+        self.coefficient = coefficient
+        self.register_buffer('kernel', torch.tensor([-coefficient, 1.], dtype=torch.float32).unsqueeze(0).unsqueeze(0))
+
+    def forward(self, signal):
+        '''
+        Input:
+            signal: [B, 1, T]
+        Returns:
+            signal: [B, 1, T]
+        '''
+        return F.conv1d(signal, self.kernel, padding=1)
+
+
 class PitchAdjustableMelSpectrogram:
     def __init__(
             self,
@@ -117,3 +133,11 @@ def gaussian_blur_decode(probs: torch.Tensor, vmin: float, vmax: float, deviatio
     curve = product_sum / (weight_sum + (weight_sum == 0))  # avoid dividing by zero, [B, T]
     curve = torch.clamp(curve, min=vmin, max=vmax)
     return curve
+
+
+def high_band_mask(mel, max_mask=3, freq_start=40):  # 假设高频起始于第40个Mel通道
+    num_masks = np.random.randint(1, max_mask+1)
+    for _ in range(num_masks):
+        f = np.random.randint(freq_start, mel.shape[1])
+        mel[:, f:f+1] = 0  # 掩码单个频带
+    return mel
