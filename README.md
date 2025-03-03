@@ -93,5 +93,5 @@ Prerequisites:
 
 <div align="center">
   <img src="img/ezgif-4961618104e90c.gif" 
-       style="max-width: 90%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+       style="max-width: 30%; height: auto; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
 </div>
