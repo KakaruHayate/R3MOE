@@ -16,6 +16,22 @@ from logger import utils
 from logger.saver import Saver
 
 
+class ConsistencyWeight:
+    def __init__(self, max_weight=10, rampup=20, method='sigmoid'):
+        super().__init__()
+        self.max_weight = max_weight
+        self.rampup = rampup
+        self.method = method
+    def get_current_consistency_weight(self, epoch):
+        # Consistency ramp-up from https://arxiv.org/abs/1610.02242
+        if self.method == 'sigmoid':
+            return self.max_weight * ramps.sigmoid_rampup(epoch, self.rampup)
+        elif self.method == 'linear':
+            return self.max_weight * ramps.linear_rampup(epoch, self.rampup)
+        else:
+            raise ValueError("rampup/rampdown method error")
+
+
 def calc_r_squared(y_true, y_pred):
     # R-squared: r^2 = 1 - (SSE / SST)
     ss_res = torch.sum((y_pred - y_true) ** 2)
@@ -26,12 +42,7 @@ def calc_r_squared(y_true, y_pred):
     return r2
 
 
-def get_current_consistency_weight(epoch):
-    # Consistency ramp-up from https://arxiv.org/abs/1610.02242
-    return 10 * ramps.sigmoid_rampup(epoch, 10)
-
-
-def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, dataloader_unlabel):
+def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, dataloader_unlabel, rampsc):
     model.train()
     optimizer.train()
     sum_loss = 0
@@ -46,7 +57,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
     for itr in range(max_iters):
         saver.global_step_increment()
 
-        consistency_weight = get_current_consistency_weight(epoch)
+        consistency_weight = rampsc.get_current_consistency_weight(epoch)
         
         X_gt, y_gt = next(iter_labeled)
         X_unlabel, X_unlabel1, X_unlabel2 = next(iter_unlabeled)
@@ -251,7 +262,7 @@ def draw_unlabel(dataloader, model, device, optimizer, saver, draw=True):
                     curve_pred=curve_pred_draw
                 )
             })
-        saver.log_info('draw unlabel done')
+        saver.log_info(' [*] draw unlabel done')
     return mean_loss
 
 
@@ -275,13 +286,19 @@ def main():
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
     p.add_argument('--plot_epoch_interval', type=int, default=1)
     p.add_argument('--save_epoch_interval', type=int, default=1)
+    p.add_argument('--consistency_weight', type=float, default=5)
+    p.add_argument('--rampup_epoch', type=float, default=20)
     args = p.parse_args()
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    # dropout不能为0
     if args.conv_dropout==0:
         raise ValueError("You must enable dropout for building positive samples!!!")
+
+    # consistency loss 权重调度
+    rampsc = ConsistencyWeight(args.consistency_weight, args.rampup_epoch)
 
     # unlabel数据集
     train_dataset_unlabel = dataset.UnlabelTrainingDataset(
@@ -385,8 +402,12 @@ def main():
     for epoch in range(args.epoch):
         # 训练循环
         _ = train_epoch(
-            train_dataloader, model, device, optimizer, saver, epoch, ema_model, train_dataloader_unlabel
+            train_dataloader, model, device, optimizer, saver, epoch, ema_model, train_dataloader_unlabel, rampsc
         )
+        # 保存权重，val似乎有bug，先保存保险一些
+        if (epoch + 1) % args.save_epoch_interval == 0:
+            saver.save_model(model, postfix=str(epoch))
+            saver.save_model(ema_model.module, name='ema_model', postfix=str(epoch))
         # seen测试集
         val_loss = validate_epoch(
             val_dataloader, ema_model.module, device, optimizer, saver,
@@ -402,10 +423,6 @@ def main():
             val_dataloader_unlabel, ema_model.module, device, optimizer, saver,
             draw=(epoch + 1) % args.plot_epoch_interval == 0
         )
-
-        if (epoch + 1) % args.save_epoch_interval == 0:
-            saver.save_model(model, postfix=str(epoch))
-            saver.save_model(ema_model.module, name='ema_model', postfix=str(epoch))
 
 
 if __name__ == '__main__':
