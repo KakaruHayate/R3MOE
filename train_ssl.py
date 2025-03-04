@@ -28,7 +28,7 @@ def calc_r_squared(y_true, y_pred):
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
-    return 100 * ramps.sigmoid_rampup(epoch, 5)
+    return 10 * ramps.sigmoid_rampup(epoch, 10)
 
 
 def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, dataloader_unlabel):
@@ -269,8 +269,8 @@ def main():
     p.add_argument('--seed', '-s', type=int, default=3047)
     p.add_argument('--num_workers', '-w', type=int, default=4)
     p.add_argument('--epoch', '-E', type=int, default=200)
-    p.add_argument('--hidden_dims', type=int, default=768)
-    p.add_argument('--n_layers', type=int, default=1)
+    p.add_argument('--hidden_dims', type=int, default=512)
+    p.add_argument('--n_layers', type=int, default=2)
     p.add_argument('--conv_dropout', type=float, default=0.2)
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
     p.add_argument('--plot_epoch_interval', type=int, default=1)
