@@ -63,7 +63,7 @@ Prerequisites:
 
 - Use 10+ hours of seen data
 - Prepare 50+ hours of unlabeled data
-- Tested datasets: [PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view), [M4Singer](https://github.com/M4Singer/M4Singer)
+- Tested datasets: [PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB), [M4Singer](https://github.com/M4Singer/M4Singer)
 
 ## Inference
 
@@ -78,11 +78,11 @@ Prerequisites:
 - SSL inspiration: [SOFA](https://github.com/qiuqiao/SOFA)
 - Core references:
     
-  [R-Drop: Regularized Dropout for Neural Networks](https://arxiv.org/abs/2106.14448)
+  [R-Drop: Regularized Dropout for Neural Networks](https://arxiv.org/abs/2106.14448) [[CODE]](https://github.com/dropreg/R-Drop)
   
-  [Temporal Ensembling for Semi-Supervised Learning](https://arxiv.org/abs/1610.02242)
+  [Temporal Ensembling for Semi-Supervised Learning](https://arxiv.org/abs/1610.02242) [[CODE]](https://github.com/ferretj/temporal-ensembling)
   
-  [Mean teachers are better role models: Weight-averaged consistency targets improve semi-supervised deep learning results](https://arxiv.org/abs/1703.01780)
+  [Mean teachers are better role models: Weight-averaged consistency targets improve semi-supervised deep learning results](https://arxiv.org/abs/1703.01780) [[CODE]](https://github.com/CuriousAI/mean-teacher)
 
 ## Resources
 
