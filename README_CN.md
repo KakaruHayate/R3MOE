@@ -63,7 +63,7 @@ python train_ssl.py --exp_name <实验名称> --dataset <数据集路径> --unla
 
 - 推荐使用10+小时seen数据作为驱动数据
 - 未标注数据建议准备数十小时
-- 我在试验中使用的数据集：[PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view)、[M4Singer](https://github.com/M4Singer/M4Singer)
+- 我在试验中使用的数据集：[PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view)来自[NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB)、[M4Singer](https://github.com/M4Singer/M4Singer)
 
 ## 推理
 
@@ -78,11 +78,11 @@ python train_ssl.py --exp_name <实验名称> --dataset <数据集路径> --unla
 - SSL灵感来自 [SOFA](https://github.com/qiuqiao/SOFA)
 - 核心算法实现参考：
 
-  [R-Drop: Regularized Dropout for Neural Networks](https://arxiv.org/abs/2106.14448)
+  [R-Drop: Regularized Dropout for Neural Networks](https://arxiv.org/abs/2106.14448) [[CODE]](https://github.com/dropreg/R-Drop)
   
-  [Temporal Ensembling for Semi-Supervised Learning](https://arxiv.org/abs/1610.02242)
+  [Temporal Ensembling for Semi-Supervised Learning](https://arxiv.org/abs/1610.02242) [[CODE]](https://github.com/ferretj/temporal-ensembling)
   
-  [Mean teachers are better role models: Weight-averaged consistency targets improve semi-supervised deep learning results](https://arxiv.org/abs/1703.01780)
+  [Mean teachers are better role models: Weight-averaged consistency targets improve semi-supervised deep learning results](https://arxiv.org/abs/1703.01780) [[CODE]](https://github.com/CuriousAI/mean-teacher)
 
 ## 其他
 
