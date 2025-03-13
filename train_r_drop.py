@@ -16,57 +16,6 @@ from logger import utils
 from logger.saver import Saver
 
 
-def calc_r_squared(y_true, y_pred):
-    # R-squared: r^2 = 1 - (SSE / SST)
-    ss_res = torch.sum((y_pred - y_true) ** 2)
-    mean_y_true = torch.mean(y_true)
-    ss_total = torch.sum((y_true - mean_y_true) ** 2)
-    r2 = 1 - (ss_res / ss_total) if ss_total != 0 else 0
-
-    return r2
-
-
-class JSDivLoss(torch.nn.Module):
-    def __init__(self, reduction='batchmean'):
-        super(JSDivLoss, self).__init__()
-        self.reduction = reduction
-
-    def forward(self, p, q):
-        p = F.softmax(p, dim=1)
-        q = F.softmax(q, dim=1)
-
-        m = 0.5 * (p + q)
-
-        kl_p_m = F.kl_div(m.log(), p, reduction=self.reduction)
-        kl_q_m = F.kl_div(m.log(), q, reduction=self.reduction)
-
-        js_divergence = 0.5 * (kl_p_m + kl_q_m)
-
-        return js_divergence
-
-
-class KLDivLoss(torch.nn.Module):
-    def __init__(self, reduction='batchmean'):
-        super(KLDivLoss, self).__init__()
-        self.reduction = reduction
-
-    def forward(self, p, q):
-        kl_p = F.kl_div(
-            F.log_softmax(p,dim=1), 
-            F.softmax(q,dim=1), 
-            reduction=self.reduction
-            )
-        kl_q = F.kl_div(
-            F.log_softmax(q,dim=1), 
-            F.softmax(p,dim=1), 
-            reduction=self.reduction
-            )
-
-        kl_divergence = (kl_p + kl_q) * 0.5
-
-        return kl_divergence
-
-
 def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     model.train()
     optimizer.train()

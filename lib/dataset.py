@@ -163,8 +163,8 @@ class UnlabelTrainingDataset(torch.utils.data.Dataset):
         aug_spectrogram1 = spectrogram1
         aug_spectrogram2 = spectrogram2
         # 时域频域都没什么太好的办法，dropout作为构造的兜底
-        if random.random() < 0.5:
-            aug_spectrogram1 = high_band_mask(aug_spectrogram1)
-        if random.random() < 0.5:
-            aug_spectrogram2 = high_band_mask(aug_spectrogram2)
+        #if random.random() < 0.5:
+        #    aug_spectrogram1 = high_band_mask(aug_spectrogram1)
+        #if random.random() < 0.5:
+        #    aug_spectrogram2 = high_band_mask(aug_spectrogram2)
         return spectrogram, aug_spectrogram1, aug_spectrogram2

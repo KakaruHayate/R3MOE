@@ -2,6 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from icecream import ic
+
+
+class GradientReversalLayer(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output.neg()
+
 
 class BiLSTMCurveEstimator(nn.Module):
     """
@@ -13,7 +25,8 @@ class BiLSTMCurveEstimator(nn.Module):
         vmax (float): Maximum curve value.
         hidden_dims (int): Number of hidden dimensions.
         n_layers (int): Number of conformer layers.
-        conv_dropout (float): Dropout rate of conv module, default 0.
+        dropout (float): Dropout rate of conv module, default 0.
+        num_speakers (int): speaker_cls nums.
     """
 
     def __init__(
@@ -23,7 +36,8 @@ class BiLSTMCurveEstimator(nn.Module):
             vmax: float = 1.,
             hidden_dims: int = 512,
             n_layers: int = 2,
-            conv_dropout: float = 0.2,
+            dropout: float = 0.2,
+            num_speakers: int = 47
     ):
         super().__init__()
         self.input_channels = in_dims
@@ -32,52 +46,65 @@ class BiLSTMCurveEstimator(nn.Module):
         self.vmin = vmin
         self.vmax = vmax
 
-        # Input stack, convert mel-spectrogram to hidden_dims
-        self.input_stack = nn.Sequential(
-            nn.Conv1d(in_dims, hidden_dims, 3, 1, 1, bias=False),
-            # nn.BatchNorm1d(hidden_dims), 
-            # 注：batchnorm在不使用SSL时效果是优于groupnorm的，但是半监督训练时和训练方式似乎有冲突，因此沿用FCPE的做法
-            # nn.ReLU(),
-            nn.GroupNorm(4, hidden_dims), 
-            nn.LeakyReLU(),
-            nn.Dropout(conv_dropout), # 依赖这个dropout构建样本
-            nn.Conv1d(hidden_dims, hidden_dims, 3, 1, 1, bias=False)
-        )
         # LSTM
         self.rnn = nn.LSTM(
-            input_size=hidden_dims,
+            input_size=in_dims,
             hidden_size=hidden_dims,
             num_layers=n_layers,
             bidirectional=True,
-            batch_first=True
+            batch_first=True, 
+            dropout=dropout
         )
         # Output
         self.output_proj = nn.Sequential(
             nn.Linear(hidden_dims * 2, hidden_dims),
             nn.ReLU(),
-            # nn.Dropout(conv_dropout),
             nn.Linear(hidden_dims, 1),
             nn.Sigmoid()
         )
+        self.speaker_cls = nn.Sequential(
+            nn.Linear(hidden_dims * 2, hidden_dims),
+            nn.ReLU(),
+            nn.Linear(hidden_dims, hidden_dims), 
+            nn.AdaptiveAvgPool1d(1)
+        )
+        self.speaker_linear = nn.Linear(hidden_dims, num_speakers)
+        # GRL
+        self.grl = GradientReversalLayer()
         for name, param in self.rnn.named_parameters():
             if 'weight' in name:
                 torch.nn.init.xavier_uniform_(param)
             elif 'bias' in name:
                 torch.nn.init.zeros_(param)
 
+        self.k_emb = nn.Parameter(torch.ones(num_speakers))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, spk_id: torch.Tensor=None) -> torch.Tensor:
+        # k(spk) * f(mel) → seen_target
+        # f(mel) → unseen_target
         """
         Args:
             x (torch.Tensor): Input mel-spectrogram, shape (B, T, input_channels) or (B, T, mel_bins).
+            spk_id (torch.Tensor): Speaker ids, shape (B, )
         return:
-            torch.Tensor: Predicted curve, shape (B, T).
+            x (torch.Tensor): Predicted curve, shape (B, T). # normalized curve
+            speaker_logits (torch.Tensor): (B, )
         """
         self.rnn.flatten_parameters()
-        x = self.input_stack(x.transpose(-1, -2)).transpose(-1, -2)
-        x, _ = self.rnn(x)
-        x = self.output_proj(x)
-        return x.squeeze(-1)  # normalized curve (B, T)
+        x, _ = self.rnn(x) # (B, T, 2*hidden)
+        curve_pred = self.output_proj(x) # (B, T, 1)
+
+        if spk_id is not None:
+            speaker_feat = self.grl(x) # (B, T, 2*hidden)
+            spk_emb = self.speaker_cls(speaker_feat).squeeze(1)  # (B, hidden)
+            speaker_logits = self.speaker_linear(spk_emb)  # (B, num_speakers)
+            # 斜率参数
+            k_selected = self.k_emb[spk_id].view(-1, *([1]*(curve_pred.dim()-1)))
+            curve_pred = curve_pred * k_selected
+        else:
+            speaker_logits = None
+
+        return curve_pred.squeeze(-1), spk_emb, speaker_logits
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         """

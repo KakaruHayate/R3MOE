@@ -17,7 +17,7 @@ from logger.saver import Saver
 
 
 class ConsistencyWeight:
-    def __init__(self, max_weight=10, rampup=20, method='sigmoid'):
+    def __init__(self, max_weight=10, rampup=20, method='equal'):
         super().__init__()
         self.max_weight = max_weight
         self.rampup = rampup
@@ -28,18 +28,10 @@ class ConsistencyWeight:
             return self.max_weight * ramps.sigmoid_rampup(epoch, self.rampup)
         elif self.method == 'linear':
             return self.max_weight * ramps.linear_rampup(epoch, self.rampup)
+        elif self.method == 'equal':
+            return self.max_weight
         else:
             raise ValueError("rampup/rampdown method error")
-
-
-def calc_r_squared(y_true, y_pred):
-    # R-squared: r^2 = 1 - (SSE / SST)
-    ss_res = torch.sum((y_pred - y_true) ** 2)
-    mean_y_true = torch.mean(y_true)
-    ss_total = torch.sum((y_true - mean_y_true) ** 2)
-    r2 = 1 - (ss_res / ss_total) if ss_total != 0 else 0
-
-    return r2
 
 
 def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, dataloader_unlabel, rampsc):
