@@ -1,5 +1,7 @@
 import argparse
 import random
+import json
+import pathlib
 
 import numpy as np
 import torch
@@ -154,14 +156,22 @@ def main():
     p.add_argument('--plot_epoch_interval', type=int, default=1)
     p.add_argument('--save_epoch_interval', type=int, default=1)
     args = p.parse_args()
+    print(args)
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
+    if not isinstance(args.dataset, pathlib.Path):
+        root_dir = pathlib.Path(args.dataset)
+    with open(root_dir / 'spk_mapping.json', 'r', encoding='utf-8') as f:
+        spk_mapping = json.load(f)
+    spk_num = len(spk_mapping)
+
     train_dataset = dataset.CurveTrainingDataset(
         args.dataset,
         crop_size=args.cropsize,
-        volume_aug_rate=0.5
+        volume_aug_rate=0.5,
+        use_spk_id=True
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -173,7 +183,7 @@ def main():
         pin_memory=True
     )
 
-    val_dataset = dataset.CurveValidationDataset(args.dataset)
+    val_dataset = dataset.CurveValidationDataset(args.dataset, True)
 
     val_dataloader = torch.utils.data.DataLoader(
         dataset=val_dataset,
@@ -190,7 +200,8 @@ def main():
         'vmax': args.vmax,
         'hidden_dims': args.hidden_dims,
         'n_layers': args.n_layers,
-        'dropout': args.dropout
+        'dropout': args.dropout,
+        'num_speakers': spk_num
     }
     model = nets.BiLSTMCurveEstimator(**model_args)
     if args.pretrained_model is not None:
@@ -219,13 +230,12 @@ def main():
 
     for epoch in range(args.epoch):
         _ = train_epoch(train_dataloader, model, device, optimizer, saver, epoch)
+        if (epoch + 1) % args.save_epoch_interval == 0:
+            saver.save_model(model, postfix=str(epoch))
         val_loss = validate_epoch(
             val_dataloader, model, device, optimizer, saver,
             draw=(epoch + 1) % args.plot_epoch_interval == 0
         )
-
-        if (epoch + 1) % args.save_epoch_interval == 0:
-            saver.save_model(model, postfix=str(epoch))
 
 
 if __name__ == '__main__':
