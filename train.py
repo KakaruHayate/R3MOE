@@ -11,6 +11,8 @@ import yaml
 
 import logger.utils
 from lib import dataset, nets
+from lib.metric import calc_outlier_ratio, calc_correlation, calc_r_squared, calc_dtw_distance
+from lib.loss import contrastive_loss
 from logger import utils
 from logger.saver import Saver
 
@@ -21,19 +23,24 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     sum_loss = 0
     # criterion = nn.MSELoss()
     criterion = nn.HuberLoss(reduction='mean')
+    cls_criterion = nn.CrossEntropyLoss()
 
-    for itr, (X_gt, y_gt) in enumerate(dataloader):
+    for itr, (X_gt, y_gt,spk_id) in enumerate(dataloader):
         # X: [B, T, in_dims], y: [B, T]
         saver.global_step_increment()
         X_gt = X_gt.to(device)
         y_gt = y_gt.to(device)
-        l_pred = model(X_gt)
+        if spk_id is not None:
+            spk_id = spk_id.to(device)
+        _, l_pred, spk_emb, speaker_logits = model(X_gt, spk_id)
         l_gt = model.normalize(y_gt)
-        loss = criterion(l_pred, l_gt)
+        curve_loss = criterion(l_pred, l_gt)
+        spk_loss = (cls_criterion(speaker_logits, spk_id) + contrastive_loss(spk_emb, spk_id)) * 0.5
+        total_loss = curve_loss + 0.1 * spk_loss
         current_lr = optimizer.param_groups[0]['lr']
         if saver.global_step % 10 == 0:
             saver.log_info(
-                'epoch: {} | {:3d}/{:3d} | {} | batch/s: {:.2f} | lr: {:.6} | loss: {:.6f} | time: {} | step: {}'
+                'epoch: {} | {:3d}/{:3d} | {} | batch/s: {:.2f} | lr: {:.6} | curve_loss: {:.6f} | spk_loss: {:.6f} | time: {} | step: {}'
                 .format(
                     epoch,
                     itr,
@@ -41,7 +48,8 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
                     saver.exp_name,
                     10 / saver.get_interval_time(),
                     current_lr,
-                    loss.item(),
+                    curve_loss.item(),
+                    spk_loss.item(),
                     saver.get_total_time(),
                     saver.global_step
                 )
@@ -49,11 +57,13 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         if saver.global_step % 100 == 0:
             saver.log_value({
                 'train/epoch': epoch,
-                'train/loss': loss.item(),
+                'curve_loss/loss': curve_loss.item(),
+                'spk_loss/loss': spk_loss.item(),
+                'total_loss/loss': total_loss.item(),
                 'train/lr': current_lr
             })
 
-        loss.backward()
+        total_loss.backward()
         optimizer.step()
         model.zero_grad()
 
@@ -68,18 +78,23 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
 
     sum_loss = 0
     sum_mae = 0
+    sum_correlation = 0
+    sum_dtw_distance = 0
+    sum_outlier_ratio = 0
     gt_cache = [] # 在整个验证集取r^2，所以把gt和pred先cache在concat到一起
     pred_cache = []
     criterion = nn.MSELoss()
 
     with torch.no_grad():
-        for idx, (X_gt, y_gt) in enumerate(
+        for idx, (X_gt, y_gt, spk_id) in enumerate(
                 tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)
         ):
             # X: [B, T, in_dims], y: [B, T]
             X_gt = X_gt.to(device)
             y_gt = y_gt.to(device)
-            l_pred = model(X_gt)
+            if spk_id is not None:
+                spk_id = spk_id.to(device)
+            _, l_pred, spk_emb, speaker_logits  = model(X_gt, spk_id)
             l_gt = model.normalize(y_gt)
             loss = criterion(l_pred, l_gt)
             sum_loss += loss.item() * len(X_gt)
@@ -87,6 +102,9 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
             gt_cache.append(y_gt)
             pred_cache.append(y_pred)
             sum_mae += torch.nn.functional.l1_loss(y_pred, y_gt).detach().cpu().numpy()
+            sum_correlation += calc_correlation(y_gt, y_pred)
+            sum_dtw_distance += calc_dtw_distance(y_gt, y_pred)
+            sum_outlier_ratio += calc_outlier_ratio(y_gt, y_pred)
             if not draw:
                 continue
             spec_draw = X_gt[0].cpu().numpy()
@@ -131,7 +149,7 @@ def main():
     p.add_argument('--epoch', '-E', type=int, default=200)
     p.add_argument('--hidden_dims', type=int, default=512)
     p.add_argument('--n_layers', type=int, default=2)
-    p.add_argument('--conv_dropout', type=float, default=0.2)
+    p.add_argument('--dropout', type=float, default=0.2)
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
     p.add_argument('--plot_epoch_interval', type=int, default=1)
     p.add_argument('--save_epoch_interval', type=int, default=1)
@@ -172,7 +190,7 @@ def main():
         'vmax': args.vmax,
         'hidden_dims': args.hidden_dims,
         'n_layers': args.n_layers,
-        'conv_dropout': args.conv_dropout
+        'dropout': args.dropout
     }
     model = nets.BiLSTMCurveEstimator(**model_args)
     if args.pretrained_model is not None:

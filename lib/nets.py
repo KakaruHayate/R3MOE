@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from icecream import ic
+# from icecream import ic
 
 
 class GradientReversalLayer(torch.autograd.Function):
@@ -37,7 +37,7 @@ class BiLSTMCurveEstimator(nn.Module):
             hidden_dims: int = 512,
             n_layers: int = 2,
             dropout: float = 0.2,
-            num_speakers: int = 47
+            num_speakers: int = 50
     ):
         super().__init__()
         self.input_channels = in_dims
@@ -87,7 +87,9 @@ class BiLSTMCurveEstimator(nn.Module):
             x (torch.Tensor): Input mel-spectrogram, shape (B, T, input_channels) or (B, T, mel_bins).
             spk_id (torch.Tensor): Speaker ids, shape (B, )
         return:
-            x (torch.Tensor): Predicted curve, shape (B, T). # normalized curve
+            curve_pred (torch.Tensor): Predicted curve, shape (B, T). # normalized curve
+            weighted_curve_pred (torch.Tensor): Predicted curve with weight, shape (B, T). # normalized curve
+            spk_emb (torch.Tensor): (B, hidden)
             speaker_logits (torch.Tensor): (B, )
         """
         self.rnn.flatten_parameters()
@@ -100,11 +102,13 @@ class BiLSTMCurveEstimator(nn.Module):
             speaker_logits = self.speaker_linear(spk_emb)  # (B, num_speakers)
             # 斜率参数
             k_selected = self.k_emb[spk_id].view(-1, *([1]*(curve_pred.dim()-1)))
-            curve_pred = curve_pred * k_selected
+            weighted_curve_pred = (curve_pred * k_selected).squeeze(-1)
         else:
             speaker_logits = None
+            spk_emb = None
+            weighted_curve_pred = None
 
-        return curve_pred.squeeze(-1), spk_emb, speaker_logits
+        return curve_pred.squeeze(-1), weighted_curve_pred, spk_emb, speaker_logits
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         """
