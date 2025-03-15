@@ -12,7 +12,7 @@ class GradientReversalLayer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        return grad_output.neg()
+        return grad_output.neg() 
 
 
 class BiLSTMCurveEstimator(nn.Module):
@@ -55,6 +55,12 @@ class BiLSTMCurveEstimator(nn.Module):
             batch_first=True, 
             dropout=dropout
         )
+        for name, param in self.rnn.named_parameters(): # LSTM初始化操作
+            if 'weight' in name:
+                torch.nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                torch.nn.init.zeros_(param)
+
         # Output
         self.output_proj = nn.Sequential(
             nn.Linear(hidden_dims * 2, hidden_dims),
@@ -62,22 +68,19 @@ class BiLSTMCurveEstimator(nn.Module):
             nn.Linear(hidden_dims, 1),
             nn.Sigmoid()
         )
+
+        # post process
+        self.k_emb = nn.Parameter(torch.ones(num_speakers))
+
+        # GRL
+        self.grl = GradientReversalLayer()
+        # speaker classifier
         self.speaker_cls = nn.Sequential(
             nn.Linear(hidden_dims * 2, hidden_dims),
             nn.ReLU(),
-            nn.Linear(hidden_dims, hidden_dims), 
+            nn.Linear(hidden_dims, num_speakers),
             nn.AdaptiveAvgPool1d(1)
         )
-        self.speaker_linear = nn.Linear(hidden_dims, num_speakers)
-        # GRL
-        self.grl = GradientReversalLayer()
-        for name, param in self.rnn.named_parameters():
-            if 'weight' in name:
-                torch.nn.init.xavier_uniform_(param)
-            elif 'bias' in name:
-                torch.nn.init.zeros_(param)
-
-        self.k_emb = nn.Parameter(torch.ones(num_speakers))
 
     def forward(self, x: torch.Tensor, spk_id: torch.Tensor=None) -> torch.Tensor:
         # k(spk) * f(mel) → seen_target
@@ -89,26 +92,24 @@ class BiLSTMCurveEstimator(nn.Module):
         return:
             curve_pred (torch.Tensor): Predicted curve, shape (B, T). # normalized curve
             weighted_curve_pred (torch.Tensor): Predicted curve with weight, shape (B, T). # normalized curve
-            spk_emb (torch.Tensor): (B, hidden)
-            speaker_logits (torch.Tensor): (B, )
+            speaker_logits (torch.Tensor): (B, num_speakers)
         """
         self.rnn.flatten_parameters()
         x, _ = self.rnn(x) # (B, T, 2*hidden)
         curve_pred = self.output_proj(x) # (B, T, 1)
 
         if spk_id is not None:
-            speaker_feat = self.grl(x) # (B, T, 2*hidden)
-            spk_emb = self.speaker_cls(speaker_feat).squeeze(1)  # (B, hidden)
-            speaker_logits = self.speaker_linear(spk_emb)  # (B, num_speakers)
+            speaker_feat = x
+            speaker_feat = self.grl(speaker_feat) # (B, T, 2*hidden)
+            speaker_logits = self.speaker_cls(speaker_feat).squeeze(1) # (B, num_speakers)
             # 斜率参数
             k_selected = self.k_emb[spk_id].view(-1, *([1]*(curve_pred.dim()-1)))
             weighted_curve_pred = (curve_pred * k_selected).squeeze(-1)
         else:
             speaker_logits = None
-            spk_emb = None
             weighted_curve_pred = None
 
-        return curve_pred.squeeze(-1), weighted_curve_pred, spk_emb, speaker_logits
+        return curve_pred.squeeze(-1), weighted_curve_pred, speaker_logits
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
         """

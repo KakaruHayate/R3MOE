@@ -34,15 +34,15 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         y_gt = y_gt.to(device)
         if spk_id is not None:
             spk_id = spk_id.to(device)
-        _, l_pred, spk_emb, speaker_logits = model(X_gt, spk_id)
+        _, l_pred, speaker_logits = model(X_gt, spk_id)
         l_gt = model.normalize(y_gt)
-        curve_loss = criterion(l_pred, l_gt)
-        spk_loss = (cls_criterion(speaker_logits, spk_id) + contrastive_loss(spk_emb, spk_id)) * 0.5
-        total_loss = curve_loss + 0.1 * spk_loss
+        G_loss = criterion(l_pred, l_gt)
+        D_loss = cls_criterion(speaker_logits, spk_id)
+        total_loss = G_loss + 0.1 * D_loss
         current_lr = optimizer.param_groups[0]['lr']
         if saver.global_step % 10 == 0:
             saver.log_info(
-                'epoch: {} | {:3d}/{:3d} | {} | batch/s: {:.2f} | lr: {:.6} | curve_loss: {:.6f} | spk_loss: {:.6f} | time: {} | step: {}'
+                'epoch: {} | {:3d}/{:3d} | {} | batch/s: {:.2f} | lr: {:.6} | G_loss: {:.6f} | D_loss: {:.6f} | time: {} | step: {}'
                 .format(
                     epoch,
                     itr,
@@ -50,8 +50,8 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
                     saver.exp_name,
                     10 / saver.get_interval_time(),
                     current_lr,
-                    curve_loss.item(),
-                    spk_loss.item(),
+                    G_loss.item(),
+                    D_loss.item(),
                     saver.get_total_time(),
                     saver.global_step
                 )
@@ -59,8 +59,8 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         if saver.global_step % 100 == 0:
             saver.log_value({
                 'train/epoch': epoch,
-                'curve_loss/loss': curve_loss.item(),
-                'spk_loss/loss': spk_loss.item(),
+                'G_loss/loss': G_loss.item(),
+                'D_loss/loss': D_loss.item(),
                 'total_loss/loss': total_loss.item(),
                 'train/lr': current_lr
             })
