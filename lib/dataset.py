@@ -64,19 +64,22 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         if random.random() < self.volume_aug_rate:
             spectrogram = spectrogram + np.random.uniform(-3, 3)
         spectrogram = np.clip(spectrogram, a_min=-12, a_max=None)
-        while True:
-            # crop data
-            start = random.randint(0, spectrogram.shape[0] - self.crop_size)
-            cropped_spectrogram = spectrogram[start:start + self.crop_size, :]
-            cropped_curve = curve[start:start + self.crop_size]
-            if np.all(cropped_curve == 0):
-                print('Curve all zero!!!')
-                continue
-            else:
-                break
+        start = random.randint(0, spectrogram.shape[0] - self.crop_size)
+        cropped_spectrogram = spectrogram[start:start + self.crop_size, :]
+        cropped_curve = curve[start:start + self.crop_size]
+        # while True:
+        #     # crop data
+        #     start = random.randint(0, spectrogram.shape[0] - self.crop_size)
+        #     cropped_spectrogram = spectrogram[start:start + self.crop_size, :]
+        #     cropped_curve = curve[start:start + self.crop_size]
+        #     if np.all(cropped_curve == 0):
+        #         print('Curve all zero!!!')
+        #         continue
+        #     else:
+        #         break
         if self.use_spk_id:
-            return spectrogram, curve, self.spk_ids[file_idx]
-        return spectrogram, curve, None
+            return cropped_spectrogram, cropped_curve, self.spk_ids[file_idx]
+        return cropped_spectrogram, cropped_curve, None
 
 
 class CurveValidationDataset(torch.utils.data.Dataset):

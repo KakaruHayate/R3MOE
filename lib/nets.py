@@ -2,17 +2,33 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# from icecream import ic
+from icecream import ic
 
 
 class GradientReversalLayer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
-        return x.view_as(x)
-
+        ctx.save_for_backward(x)
+        return x
     @staticmethod
     def backward(ctx, grad_output):
-        return grad_output.neg() 
+        x = ctx.saved_tensors
+        return -1 * grad_output * x[0]
+
+
+def gradient_reversal_layer(x):
+    grl = GradientReversalLayer.apply
+    return grl(x)
+
+
+class Transpose(nn.Module):
+    def __init__(self, dims):
+        super().__init__()
+        assert len(dims) == 2, 'dims must be a tuple of two dimensions'
+        self.dims = dims
+
+    def forward(self, x):
+        return x.transpose(*self.dims)
 
 
 class BiLSTMCurveEstimator(nn.Module):
@@ -72,14 +88,14 @@ class BiLSTMCurveEstimator(nn.Module):
         # post process
         self.k_emb = nn.Parameter(torch.ones(num_speakers))
 
-        # GRL
-        self.grl = GradientReversalLayer()
         # speaker classifier
         self.speaker_cls = nn.Sequential(
             nn.Linear(hidden_dims * 2, hidden_dims),
             nn.ReLU(),
             nn.Linear(hidden_dims, num_speakers),
-            nn.AdaptiveAvgPool1d(1)
+            Transpose((1, 2)),
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten(1)
         )
 
     def forward(self, x: torch.Tensor, spk_id: torch.Tensor=None) -> torch.Tensor:
@@ -100,8 +116,9 @@ class BiLSTMCurveEstimator(nn.Module):
 
         if spk_id is not None:
             speaker_feat = x
-            speaker_feat = self.grl(speaker_feat) # (B, T, 2*hidden)
-            speaker_logits = self.speaker_cls(speaker_feat).squeeze(1) # (B, num_speakers)
+            speaker_feat = gradient_reversal_layer(speaker_feat) # (B, T, 2*hidden) GRL
+            speaker_logits = self.speaker_cls(speaker_feat) # (B, num_speakers)
+            # ic(speaker_logits.shape)
             # 斜率参数
             k_selected = self.k_emb[spk_id].view(-1, *([1]*(curve_pred.dim()-1)))
             weighted_curve_pred = (curve_pred * k_selected).squeeze(-1)

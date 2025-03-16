@@ -18,6 +18,8 @@ from lib.loss import contrastive_loss
 from logger import utils
 from logger.saver import Saver
 
+from icecream import ic
+
 
 def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     model.train()
@@ -37,6 +39,8 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         _, l_pred, speaker_logits = model(X_gt, spk_id)
         l_gt = model.normalize(y_gt)
         G_loss = criterion(l_pred, l_gt)
+        # ic(speaker_logits.shape)
+        # ic(spk_id.shape)
         D_loss = cls_criterion(speaker_logits, spk_id)
         total_loss = G_loss + 0.1 * D_loss
         current_lr = optimizer.param_groups[0]['lr']
@@ -59,9 +63,9 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         if saver.global_step % 100 == 0:
             saver.log_value({
                 'train/epoch': epoch,
-                'G_loss/loss': G_loss.item(),
-                'D_loss/loss': D_loss.item(),
-                'total_loss/loss': total_loss.item(),
+                'train/G_loss': G_loss.item(),
+                'train/D_loss': D_loss.item(),
+                'train/total_loss': total_loss.item(),
                 'train/lr': current_lr
             })
 
@@ -69,7 +73,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         optimizer.step()
         model.zero_grad()
 
-        sum_loss += loss.item() * len(X_gt)
+        sum_loss += G_loss.item() * len(X_gt)
 
     return sum_loss / len(dataloader.dataset)
 
@@ -165,7 +169,7 @@ def main():
     p.add_argument('--seed', '-s', type=int, default=3047)
     p.add_argument('--num_workers', '-w', type=int, default=4)
     p.add_argument('--epoch', '-E', type=int, default=200)
-    p.add_argument('--hidden_dims', type=int, default=512)
+    p.add_argument('--hidden_dims', type=int, default=256)
     p.add_argument('--n_layers', type=int, default=2)
     p.add_argument('--dropout', type=float, default=0.)
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
