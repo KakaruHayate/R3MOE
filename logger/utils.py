@@ -124,7 +124,7 @@ def load_model(
     return global_step, model, optimizer
 
 
-def draw_plot(spec: numpy.ndarray, curve_gt: numpy.ndarray, curve_pred: numpy.ndarray = None):
+def draw_plot(spec: numpy.ndarray, curve_gt: numpy.ndarray, curve_pred: numpy.ndarray = None, curve_pred_ori: numpy.ndarray = None):
     # draw spec and curves together
     fig, ax1 = plt.subplots(figsize=(12, 6))
     ax1.pcolor(spec.T, vmin=-14, vmax=4)
@@ -132,6 +132,8 @@ def draw_plot(spec: numpy.ndarray, curve_gt: numpy.ndarray, curve_pred: numpy.nd
     ax2.plot(curve_gt, 'b', label='gt')
     if curve_pred is not None:
         ax2.plot(curve_pred, 'r', label='pred')
+    if curve_pred_ori is not None:
+        ax2.plot(curve_pred_ori, 'y', label='k * pred')
     plt.legend(loc='upper right')
     plt.tight_layout()
     return fig

@@ -79,6 +79,7 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
     optimizer.eval()
 
     sum_loss = 0
+    sum_cls_loss = 0
     sum_mae = 0
     sum_correlation = 0
     sum_dtw_distance = 0
@@ -86,6 +87,7 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
     gt_cache = [] # 在整个验证集取r^2，所以把gt和pred先cache在concat到一起
     pred_cache = []
     criterion = nn.MSELoss()
+    cls_criterion = nn.CrossEntropyLoss()
 
     with torch.no_grad():
         for idx, (X_gt, y_gt, spk_id) in enumerate(
@@ -96,13 +98,16 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
             y_gt = y_gt.to(device)
             if spk_id is not None:
                 spk_id = spk_id.to(device)
-            _, l_pred, spk_emb, speaker_logits  = model(X_gt, spk_id)
+            l_pred_ori, l_pred, speaker_logits = model(X_gt, spk_id)
             l_gt = model.normalize(y_gt)
             loss = criterion(l_pred, l_gt)
+            
             sum_loss += loss.item() * len(X_gt)
             y_pred = model.denormalize(l_pred)
+            y_pred_ori = model.denormalize(l_pred_ori)
             gt_cache.append(y_gt)
             pred_cache.append(y_pred)
+            sum_cls_loss += cls_criterion(speaker_logits, spk_id)
             sum_mae += torch.nn.functional.l1_loss(y_pred, y_gt).detach().cpu().numpy()
             sum_correlation += calc_correlation(y_gt, y_pred)
             sum_dtw_distance += calc_dtw_distance(y_gt, y_pred)
@@ -112,26 +117,37 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
             spec_draw = X_gt[0].cpu().numpy()
             curve_gt_draw = y_gt[0].cpu().numpy()
             curve_pred_draw = y_pred[0].cpu().numpy()
+            curve_pred_draw_ori = y_pred_ori[0].cpu().numpy()
             if spec_draw.shape[0] > 1024:
                 spec_draw = spec_draw[:1024]
                 curve_gt_draw = curve_gt_draw[:1024]
                 curve_pred_draw = curve_pred_draw[:1024]
+                curve_pred_draw_ori = curve_pred_draw_ori[:1024]
             saver.log_figure({
                 f'curve_{idx}': logger.utils.draw_plot(
                     spec=spec_draw,
                     curve_gt=curve_gt_draw,
-                    curve_pred=curve_pred_draw
+                    curve_pred=curve_pred_draw,
+                    curve_pred_ori=curve_pred_draw_ori
                 )
             })
 
     mean_loss = sum_loss / len(dataloader.dataset)
+    mean_cls_loss = sum_cls_loss / len(dataloader.dataset)
     r_squared = calc_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
     mean_mae = sum_mae / len(dataloader.dataset)
-    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(mean_loss, mean_mae, r_squared))
+    mean_correlation = sum_correlation / len(dataloader.dataset)
+    mean_dtw_distance = sum_dtw_distance / len(dataloader.dataset)
+    mean_outlier_ratio = sum_outlier_ratio / len(dataloader.dataset)
+    saver.log_info(' --- <seen_validation> --- MSE: {:.6f} MAE: {:.6f} R_squared: {:.6f} cls_loss: {:.6f} Correlation: {:.6f} DTW: {:.6f} outlier: {:.6f}'.format(mean_loss, mean_mae, r_squared, mean_cls_loss, mean_correlation, mean_dtw_distance, mean_outlier_ratio))
     saver.log_value({
-        'validation/loss': mean_loss,
-        'validation/mae': mean_mae,
-        'validation/r_squared': r_squared
+        'seen_validation/mse': mean_loss,
+        'seen_validation/mae': mean_mae,
+        'seen_validation/r_squared': r_squared,
+        'seen_validation/cls_loss': mean_cls_loss,
+        'seen_validation/correlation': mean_correlation,
+        'seen_validation/dtw_distance': mean_dtw_distance,
+        'seen_validation/outlier_ratio': mean_outlier_ratio
     })
     return mean_loss
 
@@ -151,7 +167,7 @@ def main():
     p.add_argument('--epoch', '-E', type=int, default=200)
     p.add_argument('--hidden_dims', type=int, default=512)
     p.add_argument('--n_layers', type=int, default=2)
-    p.add_argument('--dropout', type=float, default=0.2)
+    p.add_argument('--dropout', type=float, default=0.)
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
     p.add_argument('--plot_epoch_interval', type=int, default=1)
     p.add_argument('--save_epoch_interval', type=int, default=1)
