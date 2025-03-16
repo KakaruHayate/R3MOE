@@ -131,9 +131,9 @@ def draw_plot(spec: numpy.ndarray, curve_gt: numpy.ndarray, curve_pred: numpy.nd
     ax2 = ax1.twinx()
     ax2.plot(curve_gt, 'b', label='gt')
     if curve_pred is not None:
-        ax2.plot(curve_pred, 'r', label='pred')
+        ax2.plot(curve_pred, 'y', label='k * pred')
     if curve_pred_ori is not None:
-        ax2.plot(curve_pred_ori, 'y', label='k * pred')
+        ax2.plot(curve_pred_ori, 'r', label='pred')
     plt.legend(loc='upper right')
     plt.tight_layout()
     return fig
