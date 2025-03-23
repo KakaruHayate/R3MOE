@@ -12,22 +12,36 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
             self,
             root_dir: pathlib.Path,
             crop_size: int = 128,
-            volume_aug_rate: float = 0.5
+            volume_aug_rate: float = 0.5, 
+            use_spk_id: bool = False
     ):
         if not isinstance(root_dir, pathlib.Path):
             root_dir = pathlib.Path(root_dir)
         with open(root_dir / 'metadata.json', 'r', encoding='utf8') as f:
             self.metadata = json.load(f)
+        # spk_ids
+        self.use_spk_id = use_spk_id
+        if self.use_spk_id:
+            with open(root_dir / 'spk_mapping.json', 'r', encoding='utf-8') as f:
+                self.spk_mapping = json.load(f)
+            self.spk_ids = []
         self.files = []
         with open(root_dir / 'train.txt', 'r', encoding='utf8') as f:
             for line in f:
-                self.files.append(root_dir / line.strip())
+                file_path = root_dir / line.strip()
+                self.files.append(file_path)
+                
+                # 预计算spk_ids
+                if self.use_spk_id:
+                    relative_path = file_path.relative_to(root_dir)
+                    spk_name = relative_path.parts[0]
+                    self.spk_ids.append(self.spk_mapping[spk_name])
         self.lengths = np.load(root_dir / 'lengths.npy')
         if len(self.files) != len(self.lengths):
             raise ValueError("Elements in train.txt and lengths.npy do not match!")
+
         self.crop_size = crop_size
         self.volume_aug_rate = volume_aug_rate
-
         self.index_mapping = []
         for i, length in enumerate(self.lengths):
             self.index_mapping.extend([i] * (length // crop_size))
@@ -38,7 +52,8 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         return len(self.index_mapping)
 
     def __getitem__(self, idx):
-        data = np.load(self.files[self.index_mapping[idx]])
+        file_idx = self.index_mapping[idx]
+        data = np.load(self.files[file_idx])
         spectrogram = data['spectrogram']
         curve = data['curve']
         if data['spectrogram'].shape[0] < self.crop_size:
@@ -49,28 +64,43 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         if random.random() < self.volume_aug_rate:
             spectrogram = spectrogram + np.random.uniform(-3, 3)
         spectrogram = np.clip(spectrogram, a_min=-12, a_max=None)
-        # crop data
         start = random.randint(0, spectrogram.shape[0] - self.crop_size)
-        spectrogram = spectrogram[start:start + self.crop_size, :]
-        curve = curve[start:start + self.crop_size]
-        return spectrogram, curve
+        cropped_spectrogram = spectrogram[start:start + self.crop_size, :]
+        cropped_curve = curve[start:start + self.crop_size]
+        if self.use_spk_id:
+            return cropped_spectrogram, cropped_curve, self.spk_ids[file_idx]
+        return cropped_spectrogram, cropped_curve, None
 
 
 class CurveValidationDataset(torch.utils.data.Dataset):
-    def __init__(self, root_dir: pathlib.Path):
+    def __init__(self, root_dir: pathlib.Path, use_spk_id: bool = False):
         if not isinstance(root_dir, pathlib.Path):
             root_dir = pathlib.Path(root_dir)
+            
+        self.use_spk_id = use_spk_id
+        if self.use_spk_id:
+            with open(root_dir / 'spk_mapping.json', 'r', encoding='utf-8') as f:
+                self.spk_mapping = json.load(f)
+            self.spk_ids = []
+
         self.files = []
         with open(root_dir / 'valid.txt', 'r', encoding='utf8') as f:
             for line in f:
-                self.files.append(root_dir / line.strip())
+                file_path = root_dir / line.strip()
+                self.files.append(file_path)
+                if self.use_spk_id:
+                    relative_path = file_path.relative_to(root_dir)
+                    spk_name = relative_path.parts[0]
+                    self.spk_ids.append(self.spk_mapping[spk_name])
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, idx):
         data = np.load(self.files[idx])
-        return data['spectrogram'], data['curve']
+        if self.use_spk_id:
+            return data['spectrogram'], data['curve'], self.spk_ids[idx]
+        return data['spectrogram'], data['curve'], None
 
 
 class CurveValidationDataset2(torch.utils.data.Dataset): # unseen测试集
@@ -163,8 +193,8 @@ class UnlabelTrainingDataset(torch.utils.data.Dataset):
         aug_spectrogram1 = spectrogram1
         aug_spectrogram2 = spectrogram2
         # 时域频域都没什么太好的办法，dropout作为构造的兜底
-        if random.random() < 0.5:
-            aug_spectrogram1 = high_band_mask(aug_spectrogram1)
-        if random.random() < 0.5:
-            aug_spectrogram2 = high_band_mask(aug_spectrogram2)
+        # if random.random() < 0.5:
+        #     aug_spectrogram1 = high_band_mask(aug_spectrogram1)
+        # if random.random() < 0.5:
+        #     aug_spectrogram2 = high_band_mask(aug_spectrogram2)
         return spectrogram, aug_spectrogram1, aug_spectrogram2

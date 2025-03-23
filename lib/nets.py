@@ -21,9 +21,11 @@ class BiLSTMCurveEstimator(nn.Module):
             in_dims: int,
             vmin: float = 0.,
             vmax: float = 1.,
+            conv_dims: int = 256, 
             hidden_dims: int = 512,
             n_layers: int = 2,
             conv_dropout: float = 0.2,
+            num_speakers: int = 50, 
     ):
         super().__init__()
         self.input_channels = in_dims
@@ -34,18 +36,18 @@ class BiLSTMCurveEstimator(nn.Module):
 
         # Input stack, convert mel-spectrogram to hidden_dims
         self.input_stack = nn.Sequential(
-            nn.Conv1d(in_dims, hidden_dims, 3, 1, 1, bias=False),
+            nn.Conv1d(in_dims, conv_dims, 3, 1, 1, bias=False),
             # nn.BatchNorm1d(hidden_dims), 
             # 注：batchnorm在不使用SSL时效果是优于groupnorm的，但是半监督训练时和训练方式似乎有冲突，因此沿用FCPE的做法
             # nn.ReLU(),
-            nn.GroupNorm(4, hidden_dims), 
+            nn.GroupNorm(4, conv_dims), 
             nn.LeakyReLU(),
             nn.Dropout(conv_dropout), # 依赖这个dropout构建样本
-            nn.Conv1d(hidden_dims, hidden_dims, 3, 1, 1, bias=False)
+            nn.Conv1d(conv_dims, conv_dims, 3, 1, 1, bias=False)
         )
         # LSTM
         self.rnn = nn.LSTM(
-            input_size=hidden_dims,
+            input_size=conv_dims,
             hidden_size=hidden_dims,
             num_layers=n_layers,
             bidirectional=True,
@@ -65,8 +67,10 @@ class BiLSTMCurveEstimator(nn.Module):
             elif 'bias' in name:
                 torch.nn.init.zeros_(param)
 
+        # post process
+        self.k_filter = nn.Parameter(torch.ones(num_speakers))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, spk_id: torch.Tensor=None) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): Input mel-spectrogram, shape (B, T, input_channels) or (B, T, mel_bins).
@@ -77,6 +81,9 @@ class BiLSTMCurveEstimator(nn.Module):
         x = self.input_stack(x.transpose(-1, -2)).transpose(-1, -2)
         x, _ = self.rnn(x)
         x = self.output_proj(x)
+        if spk_id is not None:
+            k_filter = self.k_filter[spk_id].view(-1, *([1]*(x.dim()-1)))
+            x = x * k_filter
         return x.squeeze(-1)  # normalized curve (B, T)
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:

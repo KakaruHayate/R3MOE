@@ -1,5 +1,7 @@
 import argparse
 import random
+import json
+import pathlib
 
 import numpy as np
 import torch
@@ -78,12 +80,12 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     # r_drop_loss_fn = nn.MSELoss()
     # r_drop_loss_fn = nn.HuberLoss(reduction='mean')
 
-    for itr, (X_gt, y_gt) in enumerate(dataloader):
-        # X: [B, T, in_dims], y: [B, T]
+    for itr, (X_gt, y_gt, spk_ids) in enumerate(dataloader):
+        # X: [B, T, in_dims], y: [B, T], spk_ids: [B, ]
         saver.global_step_increment()
         X_gt = X_gt.to(device)
         y_gt = y_gt.to(device)
-        l_pred1 = model(X_gt)
+        l_pred1 = model(X_gt, spk_ids)
         l_pred2 = model(X_gt.detach())
         l_gt = model.normalize(y_gt)
         loss = (criterion(l_pred1, l_gt) + criterion(l_pred2, l_gt)) * 0.5
@@ -135,13 +137,13 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
     criterion = nn.MSELoss()
 
     with torch.no_grad():
-        for idx, (X_gt, y_gt) in enumerate(
+        for idx, (X_gt, y_gt, spk_ids) in enumerate(
                 tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)
         ):
-            # X: [B, T, in_dims], y: [B, T]
+            # X: [B, T, in_dims], y: [B, T], spk_ids: [B, ]
             X_gt = X_gt.to(device)
             y_gt = y_gt.to(device)
-            l_pred = model(X_gt)
+            l_pred = model(X_gt, spk_ids)
             l_gt = model.normalize(y_gt)
             loss = criterion(l_pred, l_gt)
             sum_loss += loss.item() * len(X_gt)
@@ -191,6 +193,7 @@ def main():
     p.add_argument('--seed', '-s', type=int, default=3047)
     p.add_argument('--num_workers', '-w', type=int, default=4)
     p.add_argument('--epoch', '-E', type=int, default=200)
+    p.add_argument('--conv_dims', type=int, default=256)
     p.add_argument('--hidden_dims', type=int, default=512)
     p.add_argument('--n_layers', type=int, default=2)
     p.add_argument('--conv_dropout', type=float, default=0.2)
@@ -208,7 +211,8 @@ def main():
     train_dataset = dataset.CurveTrainingDataset(
         args.dataset,
         crop_size=args.cropsize,
-        volume_aug_rate=0.5
+        volume_aug_rate=0.5, 
+        use_spk_id=True
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -220,7 +224,7 @@ def main():
         pin_memory=True
     )
 
-    val_dataset = dataset.CurveValidationDataset(args.dataset)
+    val_dataset = dataset.CurveValidationDataset(args.dataset, True)
 
     val_dataloader = torch.utils.data.DataLoader(
         dataset=val_dataset,
@@ -230,14 +234,22 @@ def main():
         pin_memory=True
     )
 
+    if not isinstance(args.dataset, pathlib.Path):
+        root_dir = pathlib.Path(args.dataset)
+    with open(root_dir / 'spk_mapping.json', 'r', encoding='utf-8') as f:
+        spk_mapping = json.load(f)
+    num_speakers = len(spk_mapping)
+
     device = torch.device('cpu')
     model_args = {
         'in_dims': train_dataset.metadata['mel_bins'],
         'vmin': args.vmin,
         'vmax': args.vmax,
+        'conv_dims': args.conv_dims,
         'hidden_dims': args.hidden_dims,
         'n_layers': args.n_layers,
-        'conv_dropout': args.conv_dropout
+        'conv_dropout': args.conv_dropout, 
+        'num_speakers': num_speakers
     }
     model = nets.BiLSTMCurveEstimator(**model_args)
     if args.pretrained_model is not None:
