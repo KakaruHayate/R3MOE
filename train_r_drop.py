@@ -118,6 +118,9 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
             })
 
         total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), 1.0
+        )
         optimizer.step()
         model.zero_grad()
 

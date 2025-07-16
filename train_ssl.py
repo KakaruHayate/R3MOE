@@ -119,6 +119,9 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
             })
 
         total_loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(), 1.0
+        )
         optimizer.step()
         ema_model.update_parameters(model)
         model.zero_grad()
@@ -289,8 +292,8 @@ def main():
     p.add_argument('--pretrained_model', '-P', type=str, default=None)
     p.add_argument('--plot_epoch_interval', type=int, default=1)
     p.add_argument('--save_epoch_interval', type=int, default=1)
-    p.add_argument('--consistency_weight', type=float, default=1)
-    p.add_argument('--rampup_epoch', type=float, default=10)
+    p.add_argument('--consistency_weight', type=float, default=0.12)
+    p.add_argument('--rampup_epoch', type=float, default=3)
     args = p.parse_args()
     random.seed(args.seed)
     np.random.seed(args.seed)

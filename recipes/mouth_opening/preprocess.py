@@ -1,3 +1,4 @@
+import re
 import json
 import pathlib
 import sys
@@ -42,7 +43,12 @@ LIPS_DISTANCE = 4
     '--subtraction_offset', default=0.05, type=float,
     help='Offset for subtracted jawOpen attribute (X = jawOpen - mouthClose + offset).'
 )
-@click.option('--use_vad', is_flag=True, help='Use VAD for voice activity detection.')
+@click.option(
+    "--use_mask", is_flag=True,
+    help="Use Aegisub mask file or VAD model to mask non-vocal parts."
+)
+# @click.option('--use_noise', is_flag=True, help='Replace masked regions with Gaussian noise instead of zero.')
+# @click.option('--noise_eps', default=0.001, type=float, help='Noise epsilon.')
 @click.option('--sample_rate', default=16000, type=int, help='Sample rate for audio processing.')
 @click.option('--mel_bins', default=80, type=int, help='Number of mel bins for spectrogram.')
 @click.option('--hop_size', default=320, type=int, help='Hop size for spectrogram.')
@@ -56,7 +62,9 @@ def preprocess(
         val_num: int,
         attr_type: int,
         subtraction_offset: float,
-        use_vad: bool,
+        use_mask: bool,
+        # use_noise: bool,
+        # noise_eps: float,
         sample_rate: int,
         mel_bins: int,
         hop_size: int,
@@ -86,14 +94,7 @@ def preprocess(
         n_mels=mel_bins,
         center=True
     )
-    if use_vad:
-        from funasr import AutoModel
-        vad = AutoModel(
-            model="fsmn-vad", model_revision="v2.0.4", disable_update=True,
-            log_level="ERROR", disable_pbar=True, disable_log=True
-        )
-    else:
-        vad = None
+    vad = None
 
     with tqdm.tqdm(csv_list) as bar:
         for csv_file in bar:
@@ -139,14 +140,30 @@ def preprocess(
                 interp_fn = interp1d(xs, ys, kind="linear", fill_value="extrapolate")
                 t_mel = numpy.linspace(0, len(audio) / sample_rate, mel.shape[0])
                 curve = numpy.ndarray.astype(interp_fn(t_mel), numpy.float32)
-                if use_vad:
-                    # mask non-vocal parts using VAD
+                if use_mask:
+                    ass_path = pathlib.Path(audio_file).with_name("mask.ass")
+                    is_ass = ass_path.exists()
+                    if is_ass:
+                        # mask non-vocal parts with mask file
+                        segments = ass_to_time_array(ass_path)
+                        time_scale = 1
+                    else:
+                        # mask non-vocal parts using VAD
+                        if vad is None:
+                            from funasr import AutoModel
+                            vad = AutoModel(
+                                model="fsmn-vad", model_revision="v2.0.4", disable_update=True,
+                                log_level="ERROR", disable_pbar=True, disable_log=True
+                            )
+                        segments = vad.generate(audio_file.as_posix())[0]["value"]
+                        time_scale = 1 / 1000
                     mask = numpy.zeros_like(curve)
-                    segments = vad.generate(audio_file.as_posix())[0]['value']
                     for start_ms, end_ms in segments:
-                        start = round(start_ms / 1000 * sample_rate / hop_size)
-                        end = min(round(end_ms / 1000 * sample_rate / hop_size), mask.shape[0])
+                        start = min(round(start_ms * time_scale * sample_rate / hop_size), mask.shape[0])
+                        end = min(round(end_ms * time_scale * sample_rate / hop_size), mask.shape[0])
                         mask[start: end] = 1
+                    if is_ass:
+                        mask = 1 - mask
                     curve *= mask
                 # error value process
                 frame_indices = []
@@ -196,6 +213,22 @@ def process_error_value(timestamps, values):
             break
 
     return error_value_segment
+
+
+def ass_to_time_array(ass_file):
+    with open(ass_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    event_lines = [line for line in lines if line.startswith("Dialogue") or line.startswith("Comment")]
+    time_array = []
+    for event_line in event_lines:
+        times = re.findall(r"\d:\d{2}:\d{2,3}.\d{2}", event_line)
+        if times:
+            start_time, end_time = times
+            start_seconds = sum(float(x) * 60 ** (2 - i) for i, x in enumerate(start_time.split(":")))
+            end_seconds = sum(float(x) * 60 ** (2 - i) for i, x in enumerate(end_time.split(":")))
+            time_array.append((start_seconds, end_seconds))
+
+    return time_array
 
 
 if __name__ == "__main__":
