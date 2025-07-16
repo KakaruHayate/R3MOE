@@ -63,11 +63,13 @@ python train_ssl.py --exp_name <实验名称> --dataset <数据集路径> --unla
 
 - 推荐使用10+小时seen数据作为驱动数据
 - 未标注数据建议准备数十小时
-- 我在试验中使用的数据集：[PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view)来自[NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB)、[M4Singer](https://github.com/M4Singer/M4Singer)
+- 我在试验中使用的数据集：[PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB), [PopCS](https://drive.google.com/file/d/1uFJmPEUWbzguGBdiuupYvYbBEjopN-Xq/view?usp=sharing) from [DiffSinger](https://github.com/MoonInTheRiver/DiffSinger/), [M4Singer](https://github.com/M4Singer/M4Singer), [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490), [tiny-singing-voice-database](https://github.com/najeebkhan/tiny-singing-voice-database), [OpenSinger](https://Multi-Singer.github.io/), [GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
 
 ## 推理
 
-（待实现）
+```bash
+python eval.py --model <model_path> --wav <wav_path>
+```
 
 ## 致谢
 
