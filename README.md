@@ -65,7 +65,21 @@ Prerequisites:
 
 - Use 10+ hours of seen data
 - Prepare 50+ hours of unlabeled data
-- Tested datasets: [PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB), [PopCS](https://drive.google.com/file/d/1uFJmPEUWbzguGBdiuupYvYbBEjopN-Xq/view?usp=sharing) from [DiffSinger](https://github.com/MoonInTheRiver/DiffSinger/), [M4Singer](https://github.com/M4Singer/M4Singer), [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490), [tiny-singing-voice-database](https://github.com/najeebkhan/tiny-singing-voice-database), [OpenSinger](https://Multi-Singer.github.io/), [GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
+- Tested datasets: 
+Labeled:
+[mouth opening research project](https://github.com/openvpi/DiffSinger/discussions/235)
+MultiModal:
+[Acappella](https://ipcv.github.io/Acappella/acappella/)
+[GRID](https://zenodo.org/records/3625687)
+[URSing](https://zenodo.org/records/6404999)
+Unlabeled:
+[PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB), 
+[PopCS](https://drive.google.com/file/d/1uFJmPEUWbzguGBdiuupYvYbBEjopN-Xq/view?usp=sharing) from [DiffSinger](https://github.com/MoonInTheRiver/DiffSinger/), 
+[M4Singer](https://github.com/M4Singer/M4Singer), 
+[Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490), 
+[tiny-singing-voice-database](https://github.com/najeebkhan/tiny-singing-voice-database), 
+[OpenSinger](https://Multi-Singer.github.io/), 
+[GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
 
 ## Inference
 
@@ -87,6 +101,16 @@ python eval.py --model <model_path> --wav <wav_path>
   [Temporal Ensembling for Semi-Supervised Learning](https://arxiv.org/abs/1610.02242) [[CODE]](https://github.com/ferretj/temporal-ensembling)
   
   [Mean teachers are better role models: Weight-averaged consistency targets improve semi-supervised deep learning results](https://arxiv.org/abs/1703.01780) [[CODE]](https://github.com/CuriousAI/mean-teacher)
+
+- Partial Dataset Reference:
+  
+  Cooke, M., Barker, J., Cunningham, S., & Shao, X. (2006). The Grid Audio-Visual Speech Corpus (1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.3625687
+  
+  Bochen Li, Yuxuan Wang, and Zhiyao Duan, Audiovisual singing voice separation, Transactions of the International Society for Music Information Retrieval, 4(1), pp.195–209, 2021. DOI: http://doi.org/10.5334/tismir.108.
+  
+  Rong Gong, Rafael Caro, Yile Yang, & Xavier Serra. (2022). Jingju a Cappella Recordings Collection (2.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.6536490
+  
+  Zhang, L., Li, R., Wang, S., Deng, L., Liu, J., Ren, Y., He, J., Huang, R., Zhu, J., Chen, X., & Zhao, Z. (2022). M4Singer: A multi-style, multi-singer and musical score provided Mandarin singing corpus [Data set]. Thirty-sixth Conference on Neural Information Processing Systems Datasets and Benchmarks Track.
 
 ## Resources
 
