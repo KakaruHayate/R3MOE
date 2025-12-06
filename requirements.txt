@@ -9,3 +9,4 @@ PyYAML
 schedulefree
 scipy>=1.10.0
 tqdm
+gradio<5
