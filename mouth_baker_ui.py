@@ -129,9 +129,17 @@ class MouthBakerUI:
         style.configure("TSeparator", background=self.border_color)
 
     def auto_load_default(self):
-        base_path = pathlib.Path(__file__).parent / "experiments" / "1212s2k"
+        import sys
+        # 兼容 PyInstaller 打包后的相对路径定位
+        if getattr(sys, 'frozen', False):
+            application_path = pathlib.Path(sys.executable).parent
+        else:
+            application_path = pathlib.Path(__file__).parent
+            
+        base_path = application_path / "experiments" / "1212s2k"
         model_path = base_path / "ema_model_8.pt"
         config_path = base_path / "config.yaml"
+        
         if model_path.exists() and config_path.exists():
             try:
                 self.load_model_and_config(model_path, config_path)
