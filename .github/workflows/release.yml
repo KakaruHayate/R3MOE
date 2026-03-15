@@ -1,0 +1,58 @@
+name: Build and Release Windows EXE
+
+# 触发条件：当你推送 v 开头的 tag 时（例如 v1.0.0），或者手动在网页上点击运行
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # 强制安装 CPU 版本的 PyTorch，将最终体积从 2GB+ 缩减到 300MB 左右
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
+        # 安装其他运行依赖与打包工具
+        pip install numpy scipy matplotlib pyyaml librosa soundfile tkinterdnd2 pyinstaller
+
+    - name: Build EXE with PyInstaller
+      run: |
+        # --noconsole: 隐藏背后的黑色 cmd 命令行窗口
+        # --onefile: 打包成单个 exe
+        # --collect-data: 强制收集拖拽库需要的 tcl 依赖文件
+        pyinstaller --noconsole --onefile `
+          --name "MouthBakerUI" `
+          --collect-data tkinterdnd2 `
+          --hidden-import librosa `
+          --hidden-import soundfile `
+          --hidden-import yaml `
+          mouth_baker_ui.py
+
+    - name: Upload Artifact (For Manual Download)
+      uses: actions/upload-artifact@v4
+      with:
+        name: MouthBakerUI-Windows
+        path: dist/MouthBakerUI.exe
+
+    - name: Create GitHub Release
+      # 仅在推送 tag 时执行 Release 创建
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: dist/MouthBakerUI.exe
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
