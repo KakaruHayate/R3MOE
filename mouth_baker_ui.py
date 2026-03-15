@@ -12,11 +12,19 @@ import yaml
 import time
 import librosa
 import soundfile as sf
+import platform
+import subprocess
+import sys
 
-# --- Windows Audio Playback Support / Windows 音频播放支持 ---
+# --- Cross-Platform Audio Playback Support / 跨平台音频支持 ---
+OS_NAME = platform.system() # 'Windows', 'Darwin' (macOS), 'Linux'
+
 try:
-    import winsound
-    HAS_WINSOUND = True
+    if OS_NAME == 'Windows':
+        import winsound
+        HAS_WINSOUND = True
+    else:
+        HAS_WINSOUND = False
 except ImportError:
     HAS_WINSOUND = False
 
@@ -27,7 +35,6 @@ try:
 except ImportError:
     HAS_DND = False
 
-# Import your model components / 导入你的模型组件
 from lib.nets import BiLSTMCurveEstimator
 from lib.transforms import PitchAdjustableMelSpectrogram, dynamic_range_compression_torch
 
@@ -59,12 +66,12 @@ class MouthBakerUI:
         self.root.geometry("1200x850")
         
         # --- UI Styling (Modern Dark Theme) / UI 样式 (现代深色主题) ---
-        self.bg_color = "#252526"      # Main background (VS Code / NLE style)
-        self.panel_bg = "#1e1e1e"      # Darker background for canvas/plots
-        self.fg_color = "#cccccc"      # Main text color
-        self.accent_color = "#E91E63"  # Pink accent (active items, plots)
-        self.btn_bg = "#3a3d41"        # Button background
-        self.border_color = "#3e3e42"  # Separator lines
+        self.bg_color = "#252526"      
+        self.panel_bg = "#1e1e1e"      
+        self.fg_color = "#cccccc"      
+        self.accent_color = "#E91E63"  
+        self.btn_bg = "#3a3d41"        
+        self.border_color = "#3e3e42"  
         self.font_main = ("Segoe UI", 9)
         self.font_bold = ("Segoe UI", 9, "bold")
         
@@ -85,11 +92,14 @@ class MouthBakerUI:
         self.is_playing = False
         self.start_time = 0
         self.anim_data = None
+        self.audio_process = None # 用于管理 macOS 下的 afplay 进程
 
         self.setup_ui()
         self.auto_load_default()
         
-        # Register Drag & Drop event / 注册拖拽事件
+        # 绑定窗口关闭事件，防止僵尸进程
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         if HAS_DND:
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind('<<Drop>>', self.on_drop_file)
@@ -98,39 +108,37 @@ class MouthBakerUI:
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Configure overall frames and labels
         style.configure("TFrame", background=self.bg_color)
         style.configure("TLabel", background=self.bg_color, foreground=self.fg_color, font=self.font_main)
         
-        # Configure flat, modern buttons
         style.configure("TButton", background=self.btn_bg, foreground=self.fg_color, 
                         borderwidth=0, focuscolor=self.bg_color, font=self.font_main, padding=5)
         style.map("TButton", 
                   background=[('active', '#505357'), ('pressed', self.accent_color)],
                   foreground=[('active', '#ffffff')])
                   
-        # Accent button style (for Play button)
         style.configure("Accent.TButton", background=self.accent_color, foreground="#ffffff", font=self.font_bold)
         style.map("Accent.TButton", background=[('active', '#d81b60')])
         
-        # Configure input entries
         style.configure("TEntry", fieldbackground=self.panel_bg, foreground="#ffffff", 
                         insertcolor="#ffffff", borderwidth=1, bordercolor=self.border_color)
         
-        # Configure scales (sliders)
         style.configure("Horizontal.TScale", background=self.bg_color, troughcolor=self.panel_bg, 
                         slidercolor=self.accent_color, borderwidth=0)
         
-        # Configure LabelFrames (Panels)
         style.configure("TLabelframe", background=self.bg_color, bordercolor=self.border_color, borderwidth=1)
         style.configure("TLabelframe.Label", background=self.bg_color, foreground=self.accent_color, font=self.font_bold)
         
-        # Configure Separators
         style.configure("TSeparator", background=self.border_color)
 
+    def on_closing(self):
+        """窗口关闭时的彻底清理逻辑，防止残留进程"""
+        self.stop_playback()
+        plt.close(self.fig) # 释放 matplotlib 资源
+        self.root.destroy()
+        sys.exit(0) # 强制杀掉所有后台子线程
+
     def auto_load_default(self):
-        import sys
-        # 兼容 PyInstaller 打包后的相对路径定位
         if getattr(sys, 'frozen', False):
             application_path = pathlib.Path(sys.executable).parent
         else:
@@ -139,7 +147,6 @@ class MouthBakerUI:
         base_path = application_path / "experiments" / "1212s2k"
         model_path = base_path / "ema_model_8.pt"
         config_path = base_path / "config.yaml"
-        
         if model_path.exists() and config_path.exists():
             try:
                 self.load_model_and_config(model_path, config_path)
@@ -170,14 +177,12 @@ class MouthBakerUI:
             n_mels=dataset_args["mel_bins"], center=True
         )
         self.timestep = dataset_args["hop_size"] / dataset_args["sample_rate"]
-        self.status_label.config(text=f"Ready / 就绪: {model_path.name}", foreground="#4caf50") # Green text for ready
+        self.status_label.config(text=f"Ready / 就绪: {model_path.name}", foreground="#4caf50") 
 
     def setup_ui(self):
-        # --- Left Control Panel / 左侧控制面板 ---
         ctrl_frame = ttk.Frame(self.root, padding=15)
         ctrl_frame.pack(side=tk.LEFT, fill=tk.Y)
 
-        # File loading buttons / 文件加载按钮
         dnd_text = "📁 Load Audio / 加载音频 (Drag & Drop)" if HAS_DND else "📁 Load Audio / 加载音频"
         ttk.Button(ctrl_frame, text=dnd_text, command=self.load_audio_ui).pack(fill=tk.X, pady=(0, 5))
         ttk.Button(ctrl_frame, text="⚙ Reload Model/Config / 重选模型与配置", command=self.manual_load_ui).pack(fill=tk.X, pady=5)
@@ -186,29 +191,24 @@ class MouthBakerUI:
 
         ttk.Separator(ctrl_frame).pack(fill=tk.X, pady=15)
 
-        # --- Parameters Adjustment / 参数调节 ---
-        # Smooth Width / 平滑宽度
         ttk.Label(ctrl_frame, text="Smooth Width / 平滑宽度 (s):").pack(anchor=tk.W)
         self.smooth_val = tk.DoubleVar(value=0.12)
         self.smooth_label = ttk.Label(ctrl_frame, text="0.12", foreground="#ffffff")
         self.smooth_label.pack(anchor=tk.E, pady=(0, 2))
         ttk.Scale(ctrl_frame, from_=0, to=0.5, variable=self.smooth_val, command=self.on_param_change).pack(fill=tk.X)
         
-        # Scale / Extraction Ratio / 提取倍率
         ttk.Label(ctrl_frame, text="Extraction Scale / 提取倍率:").pack(anchor=tk.W, pady=(15,0))
         self.scale_val = tk.DoubleVar(value=1.0)
         self.scale_label = ttk.Label(ctrl_frame, text="1.00", foreground="#ffffff")
         self.scale_label.pack(anchor=tk.E, pady=(0, 2))
         ttk.Scale(ctrl_frame, from_=0.1, to=3.0, variable=self.scale_val, command=self.on_param_change).pack(fill=tk.X)
 
-        # FPS Input / 输出帧率
         ttk.Label(ctrl_frame, text="Output FPS / 输出帧率:").pack(anchor=tk.W, pady=(15,5))
         self.fps_val = tk.IntVar(value=30)
         ttk.Entry(ctrl_frame, textvariable=self.fps_val).pack(fill=tk.X)
 
         ttk.Separator(ctrl_frame).pack(fill=tk.X, pady=15)
         
-        # --- Preview Shape Control Panel / 预览嘴形控制面板 ---
         shape_frame = ttk.LabelFrame(ctrl_frame, text=" VIEWPORT SETTINGS ")
         shape_frame.pack(fill=tk.X, pady=5, ipadx=10, ipady=10)
         
@@ -220,10 +220,8 @@ class MouthBakerUI:
         self.mouth_curve_val = tk.DoubleVar(value=2.0)
         ttk.Scale(shape_frame, from_=1.0, to=3.5, variable=self.mouth_curve_val, command=self.on_shape_change).pack(fill=tk.X)
 
-        # --- Reset Button / 重置按钮 ---
         ttk.Button(ctrl_frame, text="↺ Reset All Settings / 重置设置", command=self.reset_settings).pack(fill=tk.X, pady=(15, 0))
 
-        # --- Playback and Export Buttons / 播放与导出按钮 ---
         self.btn_play = ttk.Button(ctrl_frame, text="▶ PLAY / 播放动画", command=self.toggle_playback, style="Accent.TButton")
         self.btn_play.pack(fill=tk.X, pady=20)
         
@@ -232,30 +230,26 @@ class MouthBakerUI:
         ttk.Button(ctrl_frame, text="⭳ JSON (AE Expression)", command=lambda: self.export("json")).pack(fill=tk.X, pady=2)
         ttk.Button(ctrl_frame, text="⭳ NPY (Raw Data)", command=lambda: self.export("npy")).pack(fill=tk.X, pady=2)
 
-        # --- Right Preview Panel / 右侧预览面板 ---
         self.preview_frame = ttk.Frame(self.root, padding=15)
         self.preview_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
-        # Matplotlib Figure (Top) / Matplotlib 实时曲线 (上) - Dark Mode Version
         plot_frame = ttk.LabelFrame(self.preview_frame, text=" CURVE EDITOR ")
         plot_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
-        self.fig, self.ax = plt.subplots(figsize=(5, 3), facecolor=self.panel_bg) # Dark background for figure
-        self.ax.set_facecolor(self.panel_bg) # Dark background for axes
-        self.ax.tick_params(colors=self.fg_color) # Light ticks
+        self.fig, self.ax = plt.subplots(figsize=(5, 3), facecolor=self.panel_bg) 
+        self.ax.set_facecolor(self.panel_bg) 
+        self.ax.tick_params(colors=self.fg_color) 
         for spine in self.ax.spines.values():
-            spine.set_edgecolor(self.border_color) # Dark borders
+            spine.set_edgecolor(self.border_color) 
             
         self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
-        # Tkinter Animation Canvas (Bottom) / Tkinter 动态口型 (下)
         anim_container = ttk.LabelFrame(self.preview_frame, text=" VIEWPORT (REAL-TIME) ")
         anim_container.pack(side=tk.BOTTOM, fill=tk.X, pady=(15, 0))
         self.anim_canvas = tk.Canvas(anim_container, height=200, bg=self.panel_bg, highlightthickness=0)
         self.anim_canvas.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         
-        # Initialize polygon for mouth shape / 初始化嘴形多边形
         self.mouth_polygon = self.anim_canvas.create_polygon(0,0,0,0, fill=self.accent_color, outline="#ffffff", width=2, smooth=False)
         self.anim_canvas.bind("<Configure>", lambda e: self.draw_mouth(0.0))
 
@@ -282,8 +276,14 @@ class MouthBakerUI:
 
     def process_audio_file(self, path):
         if self.model is None: return
+        
+        # 强制停止当前任何播放并重置状态，防止残留数据污染
+        self.stop_playback()
+        self.raw_data = None
+        self.anim_data = None
+        
         self.wav_path = pathlib.Path(path)
-        self.status_label.config(text=f"Processing / 处理中: {self.wav_path.name}...", foreground="#ffb900") # Yellow text during processing
+        self.status_label.config(text=f"Processing / 处理中: {self.wav_path.name}...", foreground="#ffb900") 
         self.root.update()
 
         try:
@@ -309,9 +309,8 @@ class MouthBakerUI:
                 self.raw_data = self.model(mel).squeeze(0).squeeze(-1).cpu() 
                 
             self.update_plot()
+            self.draw_mouth(0.0) # 重新校准嘴巴显示
             self.status_label.config(text=f"Ready / 就绪: {self.wav_path.name}", foreground="#4caf50")
-            
-            if self.is_playing: self.toggle_playback()
             
         except Exception as e:
             messagebox.showerror("Audio Load Error / 音频加载失败", str(e))
@@ -327,24 +326,38 @@ class MouthBakerUI:
         if not self.is_playing:
             self.draw_mouth(0.0)
 
+    def stop_playback(self):
+        """安全停止播放的核心逻辑，解耦出来以便随时调用"""
+        self.is_playing = False
+        self.btn_play.config(text="▶ PLAY / 播放动画", style="Accent.TButton")
+        self.draw_mouth(0.0)
+        
+        if OS_NAME == 'Windows' and HAS_WINSOUND:
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        elif OS_NAME == 'Darwin' and self.audio_process is not None:
+            self.audio_process.terminate()
+            self.audio_process = None
+
     def toggle_playback(self):
-        if not HAS_WINSOUND:
-            messagebox.showwarning("Notice / 提示", "Playback feature requires Windows OS. / 播放功能仅支持 Windows。")
+        if OS_NAME not in ['Windows', 'Darwin']:
+            messagebox.showwarning("Notice / 提示", "Playback feature is only supported on Windows or macOS. / 播放功能仅支持 Win/Mac。")
             return
             
         if self.playback_wav_path is None or self.raw_data is None: return
 
         if self.is_playing:
-            self.is_playing = False
-            winsound.PlaySound(None, winsound.SND_PURGE)
-            self.btn_play.config(text="▶ PLAY / 播放动画", style="Accent.TButton")
-            self.draw_mouth(0.0)
+            self.stop_playback()
         else:
             self.anim_data = self.process_data()
             self.is_playing = True
-            # Change button style to indicate active STOP state
             self.btn_play.config(text="■ STOP / 停止预览", style="TButton") 
-            winsound.PlaySound(str(self.playback_wav_path), winsound.SND_ASYNC | winsound.SND_FILENAME)
+            
+            # Cross-platform audio invocation
+            if OS_NAME == 'Windows' and HAS_WINSOUND:
+                winsound.PlaySound(str(self.playback_wav_path), winsound.SND_ASYNC | winsound.SND_FILENAME)
+            elif OS_NAME == 'Darwin':
+                # 调用 macOS 内置音频播放器 afplay
+                self.audio_process = subprocess.Popen(['afplay', str(self.playback_wav_path)])
             
             self.start_time = time.time()
             self.update_animation()
@@ -359,10 +372,7 @@ class MouthBakerUI:
             self.draw_mouth(self.anim_data[current_frame])
             self.root.after(10, self.update_animation)
         else:
-            self.is_playing = False
-            self.btn_play.config(text="▶ PLAY / 播放动画", style="Accent.TButton")
-            self.draw_mouth(0.0)
-            winsound.PlaySound(None, winsound.SND_PURGE)
+            self.stop_playback()
 
     def draw_mouth(self, val):
         w = self.anim_canvas.winfo_width()
@@ -386,9 +396,15 @@ class MouthBakerUI:
 
     def manual_load_ui(self):
         m_path = filedialog.askopenfilename(title="Select Model / 选择模型", filetypes=[("Model", "*.pt *.pth")])
+        if not m_path: return # 如果没选模型直接取消，拦截后续弹窗
+        
         c_path = filedialog.askopenfilename(title="Select Config / 选择配置", filetypes=[("Config", "*.yaml")])
-        if m_path and c_path:
+        if not c_path: return # 如果没选配置直接取消，不报错
+        
+        try:
             self.load_model_and_config(pathlib.Path(m_path), pathlib.Path(c_path))
+        except Exception as e:
+            messagebox.showerror("Error / 错误", str(e))
 
     def process_data(self):
         if self.raw_data is None: return None
@@ -410,12 +426,10 @@ class MouthBakerUI:
         data = self.process_data()
         if data is not None:
             self.ax.clear()
-            # Plot the line with Accent Color and fill the area underneath it slightly
             self.ax.plot(data, color=self.accent_color, lw=1.5)
             self.ax.fill_between(range(len(data)), data, color=self.accent_color, alpha=0.1)
             
             self.ax.set_ylim(-0.05, 1.05)
-            # Subtle dark grid lines
             self.ax.grid(True, color='#333333', linestyle='--', alpha=0.8)
             self.canvas.draw()
 
