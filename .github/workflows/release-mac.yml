@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-latest # 默认使用 Apple Silicon (M1/M2) 架构
+    runs-on: macos-latest 
 
     steps:
     - name: Checkout Code
@@ -22,15 +22,11 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        # macOS 默认的 PyTorch wheel 就是 CPU/MPS 版本，体积已经优化过
         pip install torch
-        # 安装其他运行依赖与打包工具
         pip install numpy scipy matplotlib pyyaml librosa soundfile tkinterdnd2 pyinstaller
 
     - name: Build Executable with PyInstaller
       run: |
-        # 注意：macOS 下使用 \ 来换行
-        # 我们这里不使用 --windowed，直接输出单文件可执行程序，这样路径结构与 Windows 保持一致
         pyinstaller --onefile \
           --name "MouthBakerUI" \
           --collect-data tkinterdnd2 \
@@ -39,13 +35,15 @@ jobs:
           --hidden-import yaml \
           mouth_baker_ui.py
 
-    - name: Zip the Executable (Preserves Execution Permissions)
+    # --- 修改步骤：将可执行文件和 experiments 文件夹一起打包 ---
+    - name: Zip the Executable and Models
       run: |
+        # 将 experiments 文件夹拷贝到 dist 目录中，保持层级关系
+        cp -r experiments dist/
         cd dist
-        # 将编译出的 Unix 可执行文件打包成 zip
-        zip MouthBakerUI-macOS.zip MouthBakerUI
+        zip -r MouthBakerUI-macOS.zip MouthBakerUI experiments/
 
-    - name: Upload Artifact (For Manual Download)
+    - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: MouthBakerUI-macOS
