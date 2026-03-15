@@ -442,11 +442,15 @@ class MouthBakerUI:
         if save_path:
             try:
                 if fmt == "csv": 
-                    np.savetxt(save_path, data, delimiter=",", header="MouthOpening", comments='')
+                    # 【修改点1】：加入 fmt='%.6f'，强制保存为常规的 6 位小数
+                    np.savetxt(save_path, data, delimiter=",", header="MouthOpening", comments='', fmt='%.6f')
                 elif fmt == "json":
                     with open(save_path, "w") as f: 
-                        json.dump({"fps": self.fps_val.get(), "data": data.tolist()}, f)
+                        # 【修改点2】：导出前使用 np.round 将数据精度限制在 6 位
+                        rounded_data = np.round(data, decimals=6)
+                        json.dump({"fps": self.fps_val.get(), "data": rounded_data.tolist()}, f)
                 elif fmt == "npy": 
+                    # NPY 是底层二进制格式，给程序员用的，不需要动，保留原始精度
                     np.save(save_path, data)
                 messagebox.showinfo("Success / 成功", f"File exported successfully / 文件导出成功:\n{pathlib.Path(save_path).name}")
             except Exception as e:
