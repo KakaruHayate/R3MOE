@@ -4,9 +4,7 @@
 
 以下是针对不同主流软件的接入说明与配套代码：
 
-## ---
-
-**1\. 🎬 Adobe After Effects (AE)**
+# **1\. 🎬 Adobe After Effects (AE)**
 
 **适用场景**：MG动画、二维扁平角色、通过时间重映射（Time Remapping）驱动的序列帧口型。
 
@@ -21,36 +19,32 @@
 5. 将以下代码复制并粘贴进去，根据注释修改参数即可。
 
 ## **AE 表达式代码 (以驱动 Y 轴缩放为例)：**
+```
+// 1. 绑定你的 JSON 数据层（请将名字修改为你的 json 文件名）
+var jsonLayer = thisComp.layer("your_audio_mouth.json"); 
+var fps = jsonLayer.sourceData.fps;
+var data = jsonLayer.sourceData.data;
 
-JavaScript
+// 2. 将当前合成时间换算为数据帧数
+var currentFrame = Math.floor(time * fps);
 
-// 1\. 绑定你的 JSON 数据层（请将名字修改为你的 json 文件名）  
-var jsonLayer \= thisComp.layer("your\_audio\_mouth.json");   
-var fps \= jsonLayer.sourceData.fps;  
-var data \= jsonLayer.sourceData.data;
+// 3. 安全钳制：防止数组越界导致表达式报错
+currentFrame = Math.max(0, Math.min(currentFrame, data.length - 1));
 
-// 2\. 将当前合成时间换算为数据帧数  
-var currentFrame \= Math.floor(time \* fps);
+// 4. 获取当前时间的口型数值 (0.0 ~ 1.0)
+var mouthValue = data[currentFrame];
 
-// 3\. 安全钳制：防止数组越界导致表达式报错  
-currentFrame \= Math.max(0, Math.min(currentFrame, data.length \- 1));
+// 5. 【自定义区域】数值映射 (Mapping)
+var closeMouthScaleY = 20;  // 闭嘴时，嘴巴的 Y轴缩放值 (如 20%)
+var openMouthScaleY = 100;  // 张到最大时，嘴巴的 Y轴缩放值 (如 100%)
 
-// 4\. 获取当前时间的口型数值 (0.0 \~ 1.0)  
-var mouthValue \= data\[currentFrame\];
+// 计算最终的 Y 轴缩放
+var finalY = closeMouthScaleY + (openMouthScaleY - closeMouthScaleY) * mouthValue;
 
-// 5\. 【自定义区域】数值映射 (Mapping)  
-var closeMouthScaleY \= 20;  // 闭嘴时，嘴巴的 Y轴缩放值 (如 20%)  
-var openMouthScaleY \= 100;  // 张到最大时，嘴巴的 Y轴缩放值 (如 100%)
-
-// 计算最终的 Y 轴缩放  
-var finalY \= closeMouthScaleY \+ (openMouthScaleY \- closeMouthScaleY) \* mouthValue;
-
-// 输出结果：\[X轴保持原始设定, Y轴跟随声音跳动\]  
-\[value\[0\], finalY\];
-
-## ---
-
-**2\. 🎮 Unity 3D / Live2D SDK**
+// 输出结果：[X轴保持原始设定, Y轴跟随声音跳动]
+[value[0], finalY];
+```
+# **2\. 🎮 Unity 3D / Live2D SDK**
 
 **适用场景**：3D 游戏角色开发、VTube 虚拟主播、实时互动应用。
 
@@ -64,78 +58,74 @@ var finalY \= closeMouthScaleY \+ (openMouthScaleY \- closeMouthScaleY) \* mouth
 4. 在 Unity 的 Inspector 面板中，把 CSV 文件拖给 Csv File，绑定你的 Audio Source，并指定对应的 Skinned Mesh Renderer（含有 BlendShape 的模型）。
 
 ## **Unity C\# 驱动脚本：**
-
-C\#
-
-using UnityEngine;  
+```
+using UnityEngine;
 using System.Globalization;
 
-public class MouthController : MonoBehaviour  
-{  
-    \[Header("Data & Audio")\]  
-    public TextAsset csvFile;          // 拖入导出的 CSV 文件  
-    public AudioSource audioSource;    // 对应的音频源  
-    public float targetFPS \= 30f;      // 提取时设置的 FPS，默认 30
+public class MouthController : MonoBehaviour
+{
+    [Header("Data & Audio")]
+    public TextAsset csvFile;          // 拖入导出的 CSV 文件
+    public AudioSource audioSource;    // 对应的音频源
+    public float targetFPS = 30f;      // 提取时设置的 FPS，默认 30
 
-    \[Header("3D Model Setup")\]  
-    public SkinnedMeshRenderer smr;    // 含有嘴部表情的模型  
-    public int blendShapeIndex \= 0;    // 张嘴动作在 BlendShape 列表里的序号  
-    public float maxBlendShapeWeight \= 100f; // 最大权重（Unity默认为100）
+    [Header("3D Model Setup")]
+    public SkinnedMeshRenderer smr;    // 含有嘴部表情的模型
+    public int blendShapeIndex = 0;    // 张嘴动作在 BlendShape 列表里的序号
+    public float maxBlendShapeWeight = 100f; // 最大权重（Unity默认为100）
 
-    private float\[\] mouthData;
+    private float[] mouthData;
 
-    void Start()  
-    {  
-        ParseCSV();  
+    void Start()
+    {
+        ParseCSV();
     }
 
-    void ParseCSV()  
-    {  
-        if (csvFile \== null) return;
+    void ParseCSV()
+    {
+        if (csvFile == null) return;
 
-        // 按行分割 CSV  
-        string\[\] lines \= csvFile.text.Split(new\[\] { '\\n', '\\r' }, System.StringSplitOptions.RemoveEmptyEntries);  
-          
-        // 第一行是表头 ("MouthOpening")，所以数据长度是 lines.Length \- 1  
-        mouthData \= new float\[lines.Length \- 1\];   
-          
-        for (int i \= 1; i \< lines.Length; i++)  
-        {  
-            if (float.TryParse(lines\[i\], NumberStyles.Any, CultureInfo.InvariantCulture, out float val))  
-            {  
-                mouthData\[i \- 1\] \= val;  
-            }  
-        }  
+        // 按行分割 CSV
+        string[] lines = csvFile.text.Split(new[] { '\n', '\r' }, System.StringSplitOptions.RemoveEmptyEntries);
+        
+        // 第一行是表头 ("MouthOpening")，所以数据长度是 lines.Length - 1
+        mouthData = new float[lines.Length - 1]; 
+        
+        for (int i = 1; i < lines.Length; i++)
+        {
+            if (float.TryParse(lines[i], NumberStyles.Any, CultureInfo.InvariantCulture, out float val))
+            {
+                mouthData[i - 1] = val;
+            }
+        }
     }
 
-    void Update()  
-    {  
-        // 只有当声音在播放，且有数据时才驱动  
-        if (audioSource \!= null && audioSource.isPlaying && mouthData \!= null && mouthData.Length \> 0)  
-        {  
-            // 通过音频精确播放时间来锁定数据帧，绝对不发生音画错位  
-            int currentFrame \= Mathf.FloorToInt(audioSource.time \* targetFPS);  
-            currentFrame \= Mathf.Clamp(currentFrame, 0, mouthData.Length \- 1);  
-              
-            // 计算当前权重：0.0\~1.0 映射到 0\~100  
-            float weight \= mouthData\[currentFrame\] \* maxBlendShapeWeight;  
-              
-            // 驱动 3D 模型  
-            if (smr \!= null)  
-            {  
-                smr.SetBlendShapeWeight(blendShapeIndex, weight);  
-            }  
-              
-            /\* \* 如果你使用的是 Live2D Cubism SDK，请注释掉上面的 SMR 代码，使用下方代码：  
-             \* GetComponent\<CubismModel\>().Parameters\[0\].Value \= mouthData\[currentFrame\];  
-             \*/  
-        }  
-    }  
+    void Update()
+    {
+        // 只有当声音在播放，且有数据时才驱动
+        if (audioSource != null && audioSource.isPlaying && mouthData != null && mouthData.Length > 0)
+        {
+            // 通过音频精确播放时间来锁定数据帧，绝对不发生音画错位
+            int currentFrame = Mathf.FloorToInt(audioSource.time * targetFPS);
+            currentFrame = Mathf.Clamp(currentFrame, 0, mouthData.Length - 1);
+            
+            // 计算当前权重：0.0~1.0 映射到 0~100
+            float weight = mouthData[currentFrame] * maxBlendShapeWeight;
+            
+            // 驱动 3D 模型
+            if (smr != null)
+            {
+                smr.SetBlendShapeWeight(blendShapeIndex, weight);
+            }
+            
+            /* * 如果你使用的是 Live2D Cubism SDK，请注释掉上面的 SMR 代码，使用下方代码：
+             * GetComponent<CubismModel>().Parameters[0].Value = mouthData[currentFrame];
+             */
+        }
+    }
 }
-
-## ---
-
-**3\. 🐒 Blender (3D 动画制作)**
+```
+# **3\. 🐒 Blender (3D 动画制作)**
 
 **适用场景**：3D 动画短片、MMD渲染、离线关键帧动画修整。
 
@@ -152,66 +142,65 @@ public class MouthController : MonoBehaviour
 5. 此时时间轴上会自动打满对应形态键（Shape Key）的关键帧。
 
 ## **Blender Python 烘焙脚本：**
-
-Python
-
+```
 import bpy
 
-\# \================= 需要修改的参数 \=================  
-\# 1\. 导出的 CSV 文件绝对路径 (注意使用正斜杠 / )  
-csv\_path \= "C:/Users/YourName/Desktop/output\_mouth.csv"
+# ================= 需要修改的参数 =================
+# 1. 导出的 CSV 文件绝对路径 (注意使用正斜杠 / )
+csv_path = "C:/Users/YourName/Desktop/output_mouth.csv"
 
-\# 2\. 你的 3D 模型名字  
-obj\_name \= "FaceMesh"
+# 2. 你的 3D 模型名字
+obj_name = "FaceMesh"
 
-\# 3\. 控制张嘴的形态键 (Shape Key) 名字  
-shape\_key\_name \= "MouthOpen"
+# 3. 控制张嘴的形态键 (Shape Key) 名字
+shape_key_name = "MouthOpen"
 
-\# 4\. 提取数据时的 FPS  
-data\_fps \= 30
+# 4. 提取数据时的 FPS
+data_fps = 30
 
-\# 5\. 起始帧 (如果你希望动画从第 100 帧开始播放，填 100\)  
-start\_frame \= 1  
-\# \==================================================
+# 5. 起始帧 (如果你希望动画从第 100 帧开始播放，填 100)
+start_frame = 1
+# ==================================================
 
-def bake\_mouth\_data():  
-    obj \= bpy.data.objects.get(obj\_name)  
-    if not obj or not obj.data.shape\_keys:  
-        print(f"错误：找不到模型 '{obj\_name}' 或其没有形态键！")  
-        return  
-          
-    shape\_keys \= obj.data.shape\_keys.key\_blocks  
-    if shape\_key\_name not in shape\_keys:  
-        print(f"错误：找不到名为 '{shape\_key\_name}' 的形态键！")  
-        return  
-          
-    mouth\_key \= shape\_keys\[shape\_key\_name\]  
-      
-    \# 强制匹配场景帧率以保证音画同步  
-    bpy.context.scene.render.fps \= data\_fps
+def bake_mouth_data():
+    obj = bpy.data.objects.get(obj_name)
+    if not obj or not obj.data.shape_keys:
+        print(f"错误：找不到模型 '{obj_name}' 或其没有形态键！")
+        return
+        
+    shape_keys = obj.data.shape_keys.key_blocks
+    if shape_key_name not in shape_keys:
+        print(f"错误：找不到名为 '{shape_key_name}' 的形态键！")
+        return
+        
+    mouth_key = shape_keys[shape_key_name]
+    
+    # 强制匹配场景帧率以保证音画同步
+    bpy.context.scene.render.fps = data_fps
 
-    \# 读取 CSV 并烘焙关键帧  
-    try:  
-        with open(csv\_path, 'r') as file:  
-            lines \= file.readlines()\[1:\] \# 跳过表头 "MouthOpening"  
-              
-            print(f"开始烘焙 {len(lines)} 帧数据...")  
-            for i, line in enumerate(lines):  
-                val\_str \= line.strip()  
-                if not val\_str: continue  
-                  
-                \# 读取 0\~1 的数值  
-                val \= float(val\_str)  
-                  
-                \# 赋值并插入关键帧  
-                current\_frame \= start\_frame \+ i  
-                mouth\_key.value \= val  
-                mouth\_key.keyframe\_insert(data\_path='value', frame=current\_frame)  
-                  
-        print("✅ 口型关键帧烘焙完成！请在 Timeline 查看。")  
-          
-    except FileNotFoundError:  
-        print(f"错误：找不到 CSV 文件，请检查路径: {csv\_path}")
+    # 读取 CSV 并烘焙关键帧
+    try:
+        with open(csv_path, 'r') as file:
+            lines = file.readlines()[1:] # 跳过表头 "MouthOpening"
+            
+            print(f"开始烘焙 {len(lines)} 帧数据...")
+            for i, line in enumerate(lines):
+                val_str = line.strip()
+                if not val_str: continue
+                
+                # 读取 0~1 的数值
+                val = float(val_str)
+                
+                # 赋值并插入关键帧
+                current_frame = start_frame + i
+                mouth_key.value = val
+                mouth_key.keyframe_insert(data_path='value', frame=current_frame)
+                
+        print("✅ 口型关键帧烘焙完成！请在 Timeline 查看。")
+        
+    except FileNotFoundError:
+        print(f"错误：找不到 CSV 文件，请检查路径: {csv_path}")
 
-\# 执行函数  
-bake\_mouth\_data()
+# 执行函数
+bake_mouth_data()
+```
