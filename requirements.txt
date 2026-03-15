@@ -8,5 +8,8 @@ pandas
 PyYAML
 schedulefree
 scipy>=1.10.0
+soundfile
+tkinterdnd2
+torch
 tqdm
 gradio<5
