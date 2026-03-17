@@ -16,8 +16,8 @@ import platform
 import subprocess
 import sys
 
-# --- Cross-Platform Audio Playback Support / 跨平台音频支持 ---
-OS_NAME = platform.system() # 'Windows', 'Darwin' (macOS), 'Linux'
+# --- Cross-Platform Audio Playback Support ---
+OS_NAME = platform.system() 
 
 try:
     if OS_NAME == 'Windows':
@@ -28,7 +28,7 @@ try:
 except ImportError:
     HAS_WINSOUND = False
 
-# --- Drag and Drop Support / 拖拽功能支持 ---
+# --- Drag and Drop Support ---
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
     HAS_DND = True
@@ -63,9 +63,8 @@ class MouthBakerUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Mouth Opening Baker | NLE Style")
-        self.root.geometry("1200x850")
+        self.root.geometry("1200x880") # 稍微增加一点高度容纳新选项
         
-        # --- UI Styling (Modern Dark Theme) / UI 样式 (现代深色主题) ---
         self.bg_color = "#252526"      
         self.panel_bg = "#1e1e1e"      
         self.fg_color = "#cccccc"      
@@ -78,7 +77,6 @@ class MouthBakerUI:
         self.root.configure(bg=self.bg_color)
         self.apply_modern_style()
         
-        # Internal states / 内部状态
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = None
         self.raw_data = None
@@ -88,16 +86,14 @@ class MouthBakerUI:
         self.hparams = None
         self.timestep = 0.01
         
-        # Playback states / 播放状态
         self.is_playing = False
         self.start_time = 0
         self.anim_data = None
-        self.audio_process = None # 用于管理 macOS 下的 afplay 进程
+        self.audio_process = None 
 
         self.setup_ui()
         self.auto_load_default()
         
-        # 绑定窗口关闭事件，防止僵尸进程
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         if HAS_DND:
@@ -130,13 +126,15 @@ class MouthBakerUI:
         style.configure("TLabelframe.Label", background=self.bg_color, foreground=self.accent_color, font=self.font_bold)
         
         style.configure("TSeparator", background=self.border_color)
+        
+        # Combo box style
+        style.configure("TCombobox", fieldbackground=self.panel_bg, background=self.btn_bg, foreground="#ffffff")
 
     def on_closing(self):
-        """窗口关闭时的彻底清理逻辑，防止残留进程"""
         self.stop_playback()
-        plt.close(self.fig) # 释放 matplotlib 资源
+        plt.close(self.fig) 
         self.root.destroy()
-        sys.exit(0) # 强制杀掉所有后台子线程
+        sys.exit(0) 
 
     def auto_load_default(self):
         if getattr(sys, 'frozen', False):
@@ -189,7 +187,7 @@ class MouthBakerUI:
         self.status_label = ttk.Label(ctrl_frame, text="Standby / 待命", foreground="#888888")
         self.status_label.pack(fill=tk.X, pady=5)
 
-        ttk.Separator(ctrl_frame).pack(fill=tk.X, pady=15)
+        ttk.Separator(ctrl_frame).pack(fill=tk.X, pady=10)
 
         ttk.Label(ctrl_frame, text="Smooth Width / 平滑宽度 (s):").pack(anchor=tk.W)
         self.smooth_val = tk.DoubleVar(value=0.12)
@@ -197,20 +195,29 @@ class MouthBakerUI:
         self.smooth_label.pack(anchor=tk.E, pady=(0, 2))
         ttk.Scale(ctrl_frame, from_=0, to=0.5, variable=self.smooth_val, command=self.on_param_change).pack(fill=tk.X)
         
-        ttk.Label(ctrl_frame, text="Extraction Scale / 提取倍率:").pack(anchor=tk.W, pady=(15,0))
+        ttk.Label(ctrl_frame, text="Extraction Scale / 提取倍率:").pack(anchor=tk.W, pady=(10,0))
         self.scale_val = tk.DoubleVar(value=1.0)
         self.scale_label = ttk.Label(ctrl_frame, text="1.00", foreground="#ffffff")
         self.scale_label.pack(anchor=tk.E, pady=(0, 2))
         ttk.Scale(ctrl_frame, from_=0.1, to=3.0, variable=self.scale_val, command=self.on_param_change).pack(fill=tk.X)
 
-        ttk.Label(ctrl_frame, text="Output FPS / 输出帧率:").pack(anchor=tk.W, pady=(15,5))
+        ttk.Label(ctrl_frame, text="Output FPS / 输出帧率:").pack(anchor=tk.W, pady=(10,5))
         self.fps_val = tk.IntVar(value=30)
         ttk.Entry(ctrl_frame, textvariable=self.fps_val).pack(fill=tk.X)
 
-        ttk.Separator(ctrl_frame).pack(fill=tk.X, pady=15)
+        ttk.Separator(ctrl_frame).pack(fill=tk.X, pady=10)
         
+        # --- VIEWPORT SETTINGS 升级版 ---
         shape_frame = ttk.LabelFrame(ctrl_frame, text=" VIEWPORT SETTINGS ")
         shape_frame.pack(fill=tk.X, pady=5, ipadx=10, ipady=10)
+        
+        # 新增：动画预览模式选择
+        ttk.Label(shape_frame, text="Anim Mode / 动画模式:").pack(anchor=tk.W)
+        self.anim_mode_val = tk.StringVar(value="Standard (Linear)")
+        mode_cb = ttk.Combobox(shape_frame, textvariable=self.anim_mode_val, state="readonly", 
+                               values=["Standard (Linear)", "Squash & Stretch (Physics)", "Sprite Sheet (4 Frames)"])
+        mode_cb.pack(fill=tk.X, pady=(0, 10))
+        mode_cb.bind("<<ComboboxSelected>>", self.on_shape_change)
         
         ttk.Label(shape_frame, text="Mouth Width / 嘴巴宽度:").pack(anchor=tk.W)
         self.mouth_width_val = tk.DoubleVar(value=50)
@@ -223,7 +230,7 @@ class MouthBakerUI:
         ttk.Button(ctrl_frame, text="↺ Reset All Settings / 重置设置", command=self.reset_settings).pack(fill=tk.X, pady=(15, 0))
 
         self.btn_play = ttk.Button(ctrl_frame, text="▶ PLAY / 播放动画", command=self.toggle_playback, style="Accent.TButton")
-        self.btn_play.pack(fill=tk.X, pady=20)
+        self.btn_play.pack(fill=tk.X, pady=15)
         
         ttk.Label(ctrl_frame, text="EXPORT / 导出:").pack(anchor=tk.W, pady=(0, 5))
         ttk.Button(ctrl_frame, text="⭳ CSV (Unity/Live2D)", command=lambda: self.export("csv")).pack(fill=tk.X, pady=2)
@@ -259,6 +266,7 @@ class MouthBakerUI:
         self.fps_val.set(30)
         self.mouth_width_val.set(50)
         self.mouth_curve_val.set(2.0)
+        self.anim_mode_val.set("Standard (Linear)")
         self.on_param_change()
         self.on_shape_change()
 
@@ -277,7 +285,6 @@ class MouthBakerUI:
     def process_audio_file(self, path):
         if self.model is None: return
         
-        # 强制停止当前任何播放并重置状态，防止残留数据污染
         self.stop_playback()
         self.raw_data = None
         self.anim_data = None
@@ -309,7 +316,7 @@ class MouthBakerUI:
                 self.raw_data = self.model(mel).squeeze(0).squeeze(-1).cpu() 
                 
             self.update_plot()
-            self.draw_mouth(0.0) # 重新校准嘴巴显示
+            self.draw_mouth(0.0) 
             self.status_label.config(text=f"Ready / 就绪: {self.wav_path.name}", foreground="#4caf50")
             
         except Exception as e:
@@ -327,7 +334,6 @@ class MouthBakerUI:
             self.draw_mouth(0.0)
 
     def stop_playback(self):
-        """安全停止播放的核心逻辑，解耦出来以便随时调用"""
         self.is_playing = False
         self.btn_play.config(text="▶ PLAY / 播放动画", style="Accent.TButton")
         self.draw_mouth(0.0)
@@ -352,11 +358,9 @@ class MouthBakerUI:
             self.is_playing = True
             self.btn_play.config(text="■ STOP / 停止预览", style="TButton") 
             
-            # Cross-platform audio invocation
             if OS_NAME == 'Windows' and HAS_WINSOUND:
                 winsound.PlaySound(str(self.playback_wav_path), winsound.SND_ASYNC | winsound.SND_FILENAME)
             elif OS_NAME == 'Darwin':
-                # 调用 macOS 内置音频播放器 afplay
                 self.audio_process = subprocess.Popen(['afplay', str(self.playback_wav_path)])
             
             self.start_time = time.time()
@@ -380,9 +384,22 @@ class MouthBakerUI:
         if w < 10 or h < 10: return
         cx, cy = w / 2, h / 2
         
+        mode = self.anim_mode_val.get()
+        
+        # 魔法 1：序列帧模式 (Sprite Sheet Quantization)
+        if mode == "Sprite Sheet (4 Frames)":
+            # 将平滑的 0~1 强行切分为 4 个离散状态: 0.0, 0.33, 0.66, 1.0
+            steps = 3 
+            val = round(val * steps) / steps
+            
         a = self.mouth_width_val.get()   
         b = 2 + val * 60                 
         n = self.mouth_curve_val.get()   
+        
+        # 魔法 2：挤压与拉伸物理模式 (Squash & Stretch)
+        if mode == "Squash & Stretch (Physics)":
+            # 嘴巴往下张得越大，横向宽度 'a' 就会往内收缩 (最大收缩 20%)
+            a = a * (1.0 - val * 0.2)
         
         points = []
         for t in np.linspace(0, 2 * np.pi, 40):
@@ -396,10 +413,10 @@ class MouthBakerUI:
 
     def manual_load_ui(self):
         m_path = filedialog.askopenfilename(title="Select Model / 选择模型", filetypes=[("Model", "*.pt *.pth")])
-        if not m_path: return # 如果没选模型直接取消，拦截后续弹窗
+        if not m_path: return 
         
         c_path = filedialog.askopenfilename(title="Select Config / 选择配置", filetypes=[("Config", "*.yaml")])
-        if not c_path: return # 如果没选配置直接取消，不报错
+        if not c_path: return 
         
         try:
             self.load_model_and_config(pathlib.Path(m_path), pathlib.Path(c_path))
@@ -442,15 +459,12 @@ class MouthBakerUI:
         if save_path:
             try:
                 if fmt == "csv": 
-                    # 【修改点1】：加入 fmt='%.6f'，强制保存为常规的 6 位小数
                     np.savetxt(save_path, data, delimiter=",", header="MouthOpening", comments='', fmt='%.6f')
                 elif fmt == "json":
                     with open(save_path, "w") as f: 
-                        # 【修改点2】：导出前使用 np.round 将数据精度限制在 6 位
                         rounded_data = np.round(data, decimals=6)
                         json.dump({"fps": self.fps_val.get(), "data": rounded_data.tolist()}, f)
                 elif fmt == "npy": 
-                    # NPY 是底层二进制格式，给程序员用的，不需要动，保留原始精度
                     np.save(save_path, data)
                 messagebox.showinfo("Success / 成功", f"File exported successfully / 文件导出成功:\n{pathlib.Path(save_path).name}")
             except Exception as e:
