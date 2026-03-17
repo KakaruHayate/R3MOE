@@ -208,3 +208,73 @@ def bake_mouth_data():
 # 执行函数
 bake_mouth_data()
 ```
+
+# 💡 进阶技巧：如何用单一参数做出“高级口型”？ 
+虽然本工具输出的仅仅是一个 0.0 ~ 1.0 的单维度张合度参数，但我们完全可以通过软件表达式，利用伪物理映射将其包装成极具表现力的完整嘴部动作，告别死板的“机械张口”。
+
+以下是两种在 After Effects (AE) 中极其常用的高级动画映射方案：
+
+## **方案 A：挤压与拉伸（Squash & Stretch）—— 物理体积守恒法**
+适用场景：MG 动画、欧美卡通风、需要 Q 弹“肉感”的嘴形。
+原理：利用动画十二法则中的“挤压与拉伸”，当嘴巴张大（Y 轴放大）时，肌肉会牵引嘴唇横向收缩（X 轴缩小），从而保持体积守恒。
+
+操作步骤：
+在 AE 中，对你的嘴巴图层的 缩放 (Scale) 属性打入以下表达式：
+
+```
+// 1. 链接 JSON 数据
+var jsonLayer = thisComp.layer("your_audio_mouth.json"); 
+var fps = jsonLayer.sourceData.fps;
+var data = jsonLayer.sourceData.data;
+
+var currentFrame = Math.floor(time * fps);
+currentFrame = Math.max(0, Math.min(currentFrame, data.length - 1));
+var val = data[currentFrame]; // 获取 0.0 ~ 1.0 的张开度
+
+// 2. 基础大小设定
+var baseScale = 100;
+
+// 3. Y轴（张合）：当 val 为 1 时，Y 轴向下张大到 250%
+var scaleY = baseScale + (val * 150);
+
+// 4. X轴（挤压）：当 Y 轴张大时，X 轴往里微微收缩（最多收缩 20%）
+// 提示：如果你想做成“大笑咧嘴”的效果，可以把减号改成加号，例如：baseScale + (val * 30)
+var scaleX = baseScale - (val * 20);
+
+// 输出带物理弹性的形变
+[scaleX, scaleY];
+```
+
+## **方案 B：序列帧阈值切换法（Sprite Sheet Mapping）**
+适用场景：日系 2D 动画、扁平插画风、预绘制多张嘴型的角色。
+原理：画师并不做形变动画，而是预先画好 3-5 张不同张口程度的图（例如：0 闭嘴，1 微张，2 正常张开，3 大吼）。我们通过表达式，将连续的 0.0-1.0 映射到这几张离散的图片帧上。
+
+操作步骤：
+
+在 AE 中新建一个预合成，将画好的多张嘴型图片按顺序排列（第 0 帧放闭嘴，以此类推）。
+
+在主合成中选中这个预合成，右键选择 时间 -> 启用时间重映射 (Time Remapping)。
+
+对时间重映射属性打入以下表达式：
+
+```
+// 1. 链接 JSON 数据
+var jsonLayer = thisComp.layer("your_audio_mouth.json"); 
+var fps = jsonLayer.sourceData.fps;
+var data = jsonLayer.sourceData.data;
+
+var currentFrame = Math.floor(time * fps);
+currentFrame = Math.max(0, Math.min(currentFrame, data.length - 1));
+var val = data[currentFrame]; // 获取 0.0 ~ 1.0 的张开度
+
+// 2. 设定你的最大嘴型帧数
+// 假设你一共画了 4 张图（索引为 0, 1, 2, 3），这里填 3
+var maxFrames = 3; 
+
+// 3. 核心转换：将 0.0~1.0 的平滑数值，转换为 0 到 3 的阶梯整数
+var targetFrame = Math.round(val * maxFrames);
+
+// 4. 换算成 AE 的时间戳返回（一帧的时间 = 1 / 所在合成帧率）
+framesToTime(targetFrame);
+```
+(通过这种方式，你的 1D 曲线瞬间就变成了精准的序列帧触发器！)
