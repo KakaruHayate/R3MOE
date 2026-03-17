@@ -266,7 +266,7 @@ class MouthBakerUI:
         self.fps_val.set(30)
         self.mouth_width_val.set(50)
         self.mouth_curve_val.set(2.0)
-        self.anim_mode_val.set("Standard (Linear)")
+        self.anim_mode_val.set("Squash & Stretch (Physics)")
         self.on_param_change()
         self.on_shape_change()
 
