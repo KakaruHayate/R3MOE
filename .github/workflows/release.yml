@@ -1,5 +1,8 @@
 name: Build and Release Windows EXE
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:
