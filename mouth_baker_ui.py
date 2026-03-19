@@ -561,7 +561,7 @@ class MouthBakerUI:
                     velocities = np.gradient(data_jaw) / dt
                     
                     with open(save_path, "w", newline='') as f:
-                        f.write("Frame,Time(s),JawOpen,MouthFunnel,MouthPucker,MouthStretchLeft,MouthStretchRight,MouthShrugUpper\n")
+                        f.write("Frame,Time(s),jawOpen,mouthFunnel,mouthPucker,mouthStretchLeft,mouthStretchRight,mouthShrugUpper\n")
                         for i in range(len(data_jaw)):
                             jaw = data_jaw[i]
                             cent = data_cent[i]
