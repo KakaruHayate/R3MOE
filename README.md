@@ -71,8 +71,6 @@ Labeled:
 
 MultiModal:
 
-[Acappella](https://ipcv.github.io/Acappella/acappella/)
-
 [GRID](https://zenodo.org/records/3625687)
 
 [URSing](https://zenodo.org/records/6404999)
