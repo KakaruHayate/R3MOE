@@ -40,15 +40,17 @@ LIPS_DISTANCE = 4
             '3: jawOpen - mouthClose), 4. LipsDistance].')
 )
 @click.option(
+    '--epsilon', default=0.015, type=float,
+    help='Soft dead zone tolerance (used in conjunction with b_values.json), minor fluctuations below this value will be physically smoothed out.'
+)
+@click.option(
     '--subtraction_offset', default=0.05, type=float,
     help='Offset for subtracted jawOpen attribute (X = jawOpen - mouthClose + offset).'
 )
 @click.option(
-    "--use_mask", is_flag=True,
+    "--use_mask", is_flag=True, default=False,
     help="Use Aegisub mask file or VAD model to mask non-vocal parts."
 )
-# @click.option('--use_noise', is_flag=True, help='Replace masked regions with Gaussian noise instead of zero.')
-# @click.option('--noise_eps', default=0.001, type=float, help='Noise epsilon.')
 @click.option('--sample_rate', default=16000, type=int, help='Sample rate for audio processing.')
 @click.option('--mel_bins', default=80, type=int, help='Number of mel bins for spectrogram.')
 @click.option('--hop_size', default=320, type=int, help='Hop size for spectrogram.')
@@ -61,10 +63,9 @@ def preprocess(
         val_list: pathlib.Path,
         val_num: int,
         attr_type: int,
+        epsilon: float,
         subtraction_offset: float,
         use_mask: bool,
-        # use_noise: bool,
-        # noise_eps: float,
         sample_rate: int,
         mel_bins: int,
         hop_size: int,
@@ -80,6 +81,16 @@ def preprocess(
         "f_min": f_min,
         "f_max": f_max
     }
+    
+    b_values_map = None
+    b_json_path = source_dir / "b_values.json"
+    if b_json_path.exists():
+        with open(b_json_path, "r", encoding="utf-8") as f:
+            raw_b_map = json.load(f)
+        b_values_map = {pathlib.Path(k).as_posix(): v for k, v in raw_b_map.items()}
+    else:
+        print("\n b_values.json not found!")
+
     csv_list = sorted(source_dir.rglob("mouth_data.csv"))
     len_list = []
     npz_list = []
@@ -101,16 +112,58 @@ def preprocess(
             # read mouth opening data
             df = pandas.read_csv(csv_file)
             xs = df["TimeStamp"].values
+            x_raw_diff = df["jawOpen"].values - df["mouthClose"].values
+            jaw_open = df["jawOpen"].values
+            mouth_close = df["mouthClose"].values
+            lips_distance = df["LipsDistance"].values if "LipsDistance" in df.columns else None
+            crop_end_time = None
+            csv_rel_posix = csv_file.relative_to(source_dir).as_posix()
+            original_x0 = df["TimeStamp"].values[0]
+            crop_end_time = None
+
+            if b_values_map is not None and csv_rel_posix in b_values_map:
+                err_segs = b_values_map[csv_rel_posix].get("error_segments", [])
+                if err_segs:
+                    crop_end_time = err_segs[0][1]   # 只取结束时间
+            else:
+                err_segs = process_error_value(df["TimeStamp"].values, x_raw_diff)
+                if err_segs:
+                    crop_end_time = err_segs[0][1]
+
+            if crop_end_time is not None and crop_end_time > original_x0:
+                keep = xs >= crop_end_time
+                xs = xs[keep]
+                x_raw_diff = x_raw_diff[keep]
+                jaw_open = jaw_open[keep]
+                mouth_close = mouth_close[keep]
+                if lips_distance is not None:
+                    lips_distance = lips_distance[keep]
+
+            if len(xs) < 2:
+                bar.write(f"Warning: insufficient data after crop in {csv_file}, skipped")
+                continue
+
             if attr_type == JAW_OPEN:
-                ys = df["jawOpen"].values
+                ys = jaw_open
             elif attr_type == MOUTH_CLOSE:
-                ys = df["mouthClose"].values
+                ys = mouth_close
             elif attr_type == CORRECTED_JAW_OPEN:
-                ys = df["jawOpen"].values * (1 - df["mouthClose"].values)
+                ys = jaw_open * (1 - mouth_close)
             elif attr_type == SUBTRACTED_JAW_OPEN:
-                ys = numpy.clip(df["jawOpen"].values - df["mouthClose"].values + subtraction_offset, a_min=0, a_max=1)
+                if b_values_map is not None:
+                    if csv_rel_posix in b_values_map:
+                        b_val = b_values_map[csv_rel_posix]["b_val"]
+                        ys = numpy.clip(x_raw_diff - b_val - epsilon, a_min=0.0, a_max=1.0)
+                    else:
+                        bar.write(f"Warning: {csv_rel_posix} is not present in the JSON, skipped!")
+                        continue
+                else:
+                    ys = numpy.clip(x_raw_diff + subtraction_offset, a_min=0.0, a_max=1.0)
             elif attr_type == LIPS_DISTANCE:
-                ys = df["LipsDistance"].values
+                if lips_distance is None:
+                    bar.write(f"Warning: LipsDistance column missing in {csv_file}, skipped")
+                    continue
+                ys = lips_distance
             else:
                 raise ValueError(f"Invalid attr_type: {attr_type}")
             if len(ys) < 2:
@@ -118,8 +171,7 @@ def preprocess(
                 continue
             offset = round(sample_rate * xs[0])
             size = round(sample_rate * (xs[-1] - xs[0]))
-            xs -= xs[0]
-            error_value_segment = process_error_value(xs, ys)
+            xs = xs - xs[0]
             # read audio data
             num_samples = None
             for audio_file in csv_file.parent.glob("*.wav"):
@@ -140,8 +192,9 @@ def preprocess(
                 interp_fn = interp1d(xs, ys, kind="linear", fill_value="extrapolate")
                 t_mel = numpy.linspace(0, len(audio) / sample_rate, mel.shape[0])
                 curve = numpy.ndarray.astype(interp_fn(t_mel), numpy.float32)
+
                 if use_mask:
-                    ass_path = pathlib.Path(audio_file).with_name("mask.ass")
+                    ass_path = audio_file.with_name("mask.ass")
                     is_ass = ass_path.exists()
                     if is_ass:
                         # mask non-vocal parts with mask file
@@ -165,14 +218,6 @@ def preprocess(
                     if is_ass:
                         mask = 1 - mask
                     curve *= mask
-                # error value process
-                frame_indices = []
-                for error_start, error_end in error_value_segment:
-                    error_start = round(error_start * sample_rate / hop_size)
-                    error_end = round(error_end * sample_rate / hop_size)
-                    frame_indices.extend(range(error_start, error_end + 1))
-                mel = numpy.delete(mel, frame_indices, axis=0)
-                curve = numpy.delete(curve, frame_indices, axis=0)
                 # save npz
                 target_file = target_dir / audio_file.relative_to(source_dir).with_suffix(".npz")
                 target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -204,15 +249,20 @@ def preprocess(
 
 
 def process_error_value(timestamps, values):
-    error_value_segment = []
-    first_error_value = values[0]
-    start_of_error = timestamps[0]
+    if len(values) < 2:
+        return []
+    first_val = values[0]
+    change_idx = -1
     for i in range(1, len(values)):
-        if values[i] != first_error_value:
-            error_value_segment.append((start_of_error, timestamps[i]))
+        if values[i] != first_val:
+            change_idx = i
             break
-
-    return error_value_segment
+    if change_idx == -1:
+        return [(timestamps[0], timestamps[-1])]
+    elif change_idx == 1:
+        return []
+    else:
+        return [(timestamps[0], timestamps[change_idx])]
 
 
 def ass_to_time_array(ass_file):
