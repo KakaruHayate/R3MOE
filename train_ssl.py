@@ -44,6 +44,13 @@ def calc_r_squared(y_true, y_pred):
     return r2
 
 
+def calc_pearson(y_true, y_pred):
+    vx = y_true - torch.mean(y_true)
+    vy = y_pred - torch.mean(y_pred)
+    cost = torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)) + 1e-8)
+    return cost
+
+
 def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, dataloader_unlabel, rampsc):
     model.train()
     optimizer.train()
@@ -178,11 +185,17 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
     mean_loss = sum_loss / len(dataloader.dataset)
     r_squared = calc_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
     mean_mae = sum_mae / len(dataloader.dataset)
-    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(mean_loss, mean_mae, r_squared))
+    gt_all = torch.cat(gt_cache, dim=1).view(-1)
+    pred_all = torch.cat(pred_cache, dim=1).view(-1)
+    pearson = calc_pearson(gt_all, pred_all)
+
+    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f} Pearson: {:.6f}'.format(
+        mean_loss, mean_mae, r_squared, pearson))
     saver.log_value({
         'validation/loss': mean_loss,
         'validation/mae': mean_mae,
-        'validation/r_squared': r_squared
+        'validation/r_squared': r_squared,
+        'validation/pearson': pearson
     })
     return mean_loss
 
@@ -191,54 +204,45 @@ def validate_epoch2(dataloader, model, device, optimizer, saver, draw=False):
     model.eval()
     optimizer.eval()
 
-    sum_loss = 0
-    sum_mae = 0
-    gt_cache = [] # 在整个验证集取r^2，所以把gt和pred先cache在concat到一起
+    gt_cache = []
     pred_cache = []
-    criterion = nn.MSELoss()
 
     with torch.no_grad():
         for idx, (X_gt, y_gt) in enumerate(
                 tqdm.tqdm(dataloader, total=len(dataloader), desc='validation_unseen', leave=False)
         ):
-            # X: [B, T, in_dims], y: [B, T]
             X_gt = X_gt.to(device)
             y_gt = y_gt.to(device)
             l_pred = model(X_gt)
-            l_gt = model.normalize(y_gt)
-            loss = criterion(l_pred, l_gt)
-            sum_loss += loss.item() * len(X_gt)
             y_pred = model.denormalize(l_pred)
             gt_cache.append(y_gt)
             pred_cache.append(y_pred)
-            sum_mae += torch.nn.functional.l1_loss(y_pred, y_gt).detach().cpu().numpy()
-            if not draw:
-                continue
-            spec_draw = X_gt[0].cpu().numpy()
-            curve_gt_draw = y_gt[0].cpu().numpy()
-            curve_pred_draw = y_pred[0].cpu().numpy()
-            if spec_draw.shape[0] > 1024:
-                spec_draw = spec_draw[:1024]
-                curve_gt_draw = curve_gt_draw[:1024]
-                curve_pred_draw = curve_pred_draw[:1024]
-            saver.log_figure({
-                f'curve_unseen_{idx}': logger.utils.draw_plot(
-                    spec=spec_draw,
-                    curve_gt=curve_gt_draw,
-                    curve_pred=curve_pred_draw
-                )
-            })
 
-    mean_loss = sum_loss / len(dataloader.dataset)
-    r_squared = calc_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
-    mean_mae = sum_mae / len(dataloader.dataset)
-    saver.log_info(' --- <validation> --- loss_unseen: {:.6f} MAE_unseen: {:.6f} R_squared_unseen: {:.6f}'.format(mean_loss, mean_mae, r_squared))
+            if draw:
+                spec_draw = X_gt[0].cpu().numpy()
+                curve_gt_draw = y_gt[0].cpu().numpy()
+                curve_pred_draw = y_pred[0].cpu().numpy()
+                if spec_draw.shape[0] > 1024:
+                    spec_draw = spec_draw[:1024]
+                    curve_gt_draw = curve_gt_draw[:1024]
+                    curve_pred_draw = curve_pred_draw[:1024]
+                saver.log_figure({
+                    f'curve_unseen_{idx}': logger.utils.draw_plot(
+                        spec=spec_draw,
+                        curve_gt=curve_gt_draw,
+                        curve_pred=curve_pred_draw
+                    )
+                })
+
+    gt_all = torch.cat(gt_cache, dim=1).view(-1)
+    pred_all = torch.cat(pred_cache, dim=1).view(-1)
+    pearson = calc_pearson(gt_all, pred_all)
+
+    saver.log_info(' --- <validation> --- pearson_unseen: {:.6f}'.format(pearson))
     saver.log_value({
-        'validation/loss_unseen': mean_loss,
-        'validation/mae_unseen': mean_mae,
-        'validation/r_squared_unseen': r_squared
+        'validation/pearson_unseen': pearson
     })
-    return mean_loss
+    return pearson
 
 
 def draw_unlabel(dataloader, model, device, optimizer, saver, draw=True):

@@ -61,11 +61,6 @@ class BiLSTMCurveEstimator(nn.Module):
             nn.Linear(hidden_dims, 1),
             nn.Sigmoid()
         )
-        for name, param in self.rnn.named_parameters():
-            if 'weight' in name:
-                torch.nn.init.xavier_uniform_(param)
-            elif 'bias' in name:
-                torch.nn.init.zeros_(param)
 
         # post process
         self.k_filter = nn.Parameter(torch.ones(num_speakers))

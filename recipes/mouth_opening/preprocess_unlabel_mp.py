@@ -2,7 +2,6 @@ import json
 import pathlib
 import sys
 import os
-import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import click
@@ -30,7 +29,7 @@ def read_val_list(val_list_path, encoding_candidates=('utf-8-sig', 'gbk', 'latin
 def process_single(audio_file, args):
     """
     处理单个音频文件，计算 mel 谱并保存 npz。
-    返回 (success, length, npz_rel_path, message)
+    返回 (success, length, npz_rel_path, duration_sec, message)
     """
     source_dir = args["source_dir"]
     target_dir = args["target_dir"]
@@ -40,6 +39,7 @@ def process_single(audio_file, args):
     try:
         # 加载音频
         audio, _ = librosa.load(audio_file, sr=sample_rate, mono=True)
+        duration = len(audio) / sample_rate
         # 计算梅尔谱
         mel = dynamic_range_compression_torch(
             mel_spec_transform(torch.from_numpy(audio)[None]),
@@ -51,11 +51,11 @@ def process_single(audio_file, args):
         target_file.parent.mkdir(parents=True, exist_ok=True)
         numpy.savez(target_file, spectrogram=mel)
 
-        return True, mel.shape[0], target_file.relative_to(target_dir).as_posix(), None
+        return True, mel.shape[0], target_file.relative_to(target_dir).as_posix(), duration, None
 
     except Exception as e:
         rel_path = audio_file.relative_to(source_dir).as_posix()
-        return False, None, None, f"skip: {str(e)}"
+        return False, None, None, 0.0, f"skip: {str(e)}"
 
 
 @click.command()
@@ -119,8 +119,9 @@ def preprocess(source_dir, target_dir, val_list, val_num, sample_rate,
     max_workers = min(num_workers, 16)  # 保守限制，可自行调整
     print(f"Using {max_workers} worker threads, total files: {len(audio_list)}")
 
-    results = {}          # audio_file -> (length, npz_path)
+    results = {}          # audio_file -> (length, npz_path, duration)
     messages = []         # list of (file, message)
+    total_duration = 0.0
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_file = {
@@ -131,9 +132,10 @@ def preprocess(source_dir, target_dir, val_list, val_num, sample_rate,
             for future in as_completed(future_to_file):
                 audio_file = future_to_file[future]
                 try:
-                    success, length, npz_path, msg = future.result()
+                    success, length, npz_path, duration, msg = future.result()
                     if success:
-                        results[audio_file] = (length, npz_path)
+                        results[audio_file] = (length, npz_path, duration)
+                        total_duration += duration
                         if msg:
                             messages.append((audio_file.relative_to(source_dir).as_posix(), msg))
                     else:
@@ -156,7 +158,7 @@ def preprocess(source_dir, target_dir, val_list, val_num, sample_rate,
     npz_list = []
     for audio_file in audio_list:
         if audio_file in results:
-            length, npz_path = results[audio_file]
+            length, npz_path, _ = results[audio_file]
             len_list.append(length)
             npz_list.append(npz_path)
 
@@ -176,7 +178,6 @@ def preprocess(source_dir, target_dir, val_list, val_num, sample_rate,
         val_indices = sorted(numpy.random.choice(len(len_list), min(val_num, len(len_list)), replace=False))
 
     # 写入 train.txt 和 valid.txt
-    # 注意：原脚本将全部文件写入 train.txt，此处保持相同行为
     with open(target_dir / "train.txt", "w", encoding="utf8") as f:
         for npz_file in npz_list:
             f.write(str(npz_file) + "\n")
@@ -191,8 +192,13 @@ def preprocess(source_dir, target_dir, val_list, val_num, sample_rate,
     with open(target_dir / "metadata.json", "w", encoding="utf8") as f:
         json.dump(metadata, f, indent=2)
 
+    # 打印统计信息
     print(f"Processed {len(npz_list)} valid samples, {len(messages)} messages (skips/warnings).")
     print(f"Train.txt contains {len(npz_list)} entries, valid.txt contains {len(val_indices)} entries.")
+    hours = total_duration / 3600
+    minutes = (total_duration % 3600) / 60
+    seconds = total_duration % 60
+    print(f"Total audio duration: {total_duration:.2f} seconds ({hours:.0f}h {minutes:.0f}m {seconds:.2f}s)")
 
 
 if __name__ == "__main__":
