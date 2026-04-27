@@ -43,12 +43,10 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
     source_dir = args["source_dir"]
     target_dir = args["target_dir"]
     attr_type = args["attr_type"]
-    epsilon = args["epsilon"]
     subtraction_offset = args["subtraction_offset"]
     use_mask = args["use_mask"]
     sample_rate = args["sample_rate"]
     hop_size = args["hop_size"]
-    b_values_map = args["b_values_map"]
     mel_spec_transform = args["mel_spec_transform"]
     vad = args.get("vad")
 
@@ -61,19 +59,13 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
         mouth_close = df["mouthClose"].values
         lips_distance = df["LipsDistance"].values if "LipsDistance" in df.columns else None
 
-        csv_rel_posix = csv_file.relative_to(source_dir).as_posix()
         original_x0 = df["TimeStamp"].values[0]
         crop_end_time = None
 
-        # 错误段裁剪
-        if b_values_map is not None and csv_rel_posix in b_values_map:
-            err_segs = b_values_map[csv_rel_posix].get("error_segments", [])
-            if err_segs:
-                crop_end_time = err_segs[0][1]
-        else:
-            err_segs = process_error_value(df["TimeStamp"].values, x_raw_diff)
-            if err_segs:
-                crop_end_time = err_segs[0][1]
+        # 自动检测并裁剪开头错误段
+        err_segs = process_error_value(df["TimeStamp"].values, x_raw_diff)
+        if err_segs:
+            crop_end_time = err_segs[0][1]
 
         if crop_end_time is not None and crop_end_time > original_x0:
             keep = xs >= crop_end_time
@@ -95,14 +87,7 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
         elif attr_type == CORRECTED_JAW_OPEN:
             ys = jaw_open * (1 - mouth_close)
         elif attr_type == SUBTRACTED_JAW_OPEN:
-            if b_values_map is not None:
-                if csv_rel_posix in b_values_map:
-                    b_val = b_values_map[csv_rel_posix]["b_val"]
-                    ys = numpy.clip(x_raw_diff - b_val - epsilon, a_min=0.0, a_max=1.0)
-                else:
-                    return False, None, None, f"skip: missing b_values.json entry for {csv_rel_posix}"
-            else:
-                ys = numpy.clip(x_raw_diff + subtraction_offset, a_min=0.0, a_max=1.0)
+            ys = numpy.clip(x_raw_diff + subtraction_offset, a_min=0.0, a_max=1.0)
         elif attr_type == LIPS_DISTANCE:
             if lips_distance is None:
                 return False, None, None, "skip: LipsDistance column missing in CSV"
@@ -115,7 +100,7 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
 
         offset = round(sample_rate * xs[0])
         size = round(sample_rate * (xs[-1] - xs[0]))
-        xs_rel = xs - xs[0]  # 相对时间
+        xs_rel = xs - xs[0]
 
         # 加载音频
         audio, _ = librosa.load(wav_file, sr=sample_rate, mono=True)
@@ -128,7 +113,7 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
             torch.from_numpy(audio)[None]
         ), clip_val=1e-9)[0].T.cpu().numpy()
 
-        # 插值曲线（直接使用 interp1d，捕获警告）
+        # 插值曲线
         t_mel = numpy.linspace(0, len(audio) / sample_rate, mel.shape[0])
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -137,12 +122,11 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
             warning_msg = None
             for wi in w:
                 if issubclass(wi.category, RuntimeWarning) and "divide" in str(wi.message):
-                    warning_msg = f"warning: interpolation division by zero (duplicate x values) for {csv_rel_posix}"
+                    warning_msg = f"warning: interpolation division by zero (duplicate x values) for {csv_file.relative_to(source_dir).as_posix()}"
                     break
 
-        # 处理插值产生的 NaN（如果因除零导致）
+        # 修复 NaN
         if numpy.any(numpy.isnan(curve)):
-            # 用前向填充+后向填充修复，避免训练失败
             curve = pandas.Series(curve).fillna(method='ffill').fillna(method='bfill').fillna(0).values
             warning_msg = (warning_msg or "") + " -> NaN fixed by ffill/bfill"
 
@@ -178,7 +162,7 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
                 mask = 1 - mask
             curve *= mask
 
-        # 保存 npz，文件名基于 wav 文件名
+        # 保存 npz
         target_file = target_dir / wav_file.relative_to(source_dir).with_suffix(".npz")
         target_file.parent.mkdir(parents=True, exist_ok=True)
         numpy.savez(target_file, spectrogram=mel, curve=curve)
@@ -197,8 +181,8 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
               help='Validation file list in a text file.')
 @click.option('--val_num', default=5, type=int)
 @click.option('--attr_type', default=SUBTRACTED_JAW_OPEN, type=int)
-@click.option('--epsilon', default=0.015, type=float)
-@click.option('--subtraction_offset', default=0.05, type=float)
+@click.option('--subtraction_offset', default=0.05, type=float,
+              help='Offset for subtracted jawOpen attribute (X = jawOpen - mouthClose + offset).')
 @click.option("--use_mask", is_flag=True, default=False)
 @click.option('--sample_rate', default=16000, type=int)
 @click.option('--mel_bins', default=80, type=int)
@@ -210,7 +194,7 @@ def process_single(csv_file, wav_file, args, lock_vad=None):
               help='Number of worker threads. Defaults to CPU count.')
 @click.option('--val_encoding', default=None, type=str,
               help='Encoding for val_list file (e.g., utf-8, gbk). Auto-detect if not given.')
-def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
+def preprocess(source_dir, target_dir, val_list, val_num, attr_type,
                subtraction_offset, use_mask, sample_rate, mel_bins, hop_size,
                win_size, f_min, f_max, num_workers, val_encoding):
     metadata = {
@@ -222,23 +206,12 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
         "f_max": f_max
     }
 
-    # 加载 b_values.json
-    b_values_map = None
-    b_json_path = source_dir / "b_values.json"
-    if b_json_path.exists():
-        with open(b_json_path, "r", encoding="utf-8") as f:
-            raw_b_map = json.load(f)
-        b_values_map = {pathlib.Path(k).as_posix(): v for k, v in raw_b_map.items()}
-    else:
-        print("\n b_values.json not found!")
-
     # 收集所有 (csv, wav) 任务对
-    tasks = []  # list of (csv_file, wav_file)
+    tasks = []
     csv_list = sorted(source_dir.rglob("mouth_data.csv"))
     for csv_file in csv_list:
         wav_files = list(csv_file.parent.glob("*.wav"))
         if not wav_files:
-            # 没有 wav 文件，记录跳过
             rel_path = csv_file.relative_to(source_dir).as_posix()
             print(f"Warning: no .wav found for {rel_path}, skipped")
             continue
@@ -265,12 +238,10 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
         "source_dir": source_dir,
         "target_dir": target_dir,
         "attr_type": attr_type,
-        "epsilon": epsilon,
         "subtraction_offset": subtraction_offset,
         "use_mask": use_mask,
         "sample_rate": sample_rate,
         "hop_size": hop_size,
-        "b_values_map": b_values_map,
         "mel_spec_transform": mel_spec_transform,
         "vad": None,
     }
@@ -281,8 +252,8 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
     max_workers = min(num_workers, 16)
     print(f"Using {max_workers} worker threads, total tasks: {len(tasks)}")
 
-    results = {}          # (csv, wav) -> (length, npz_path)
-    messages = []         # for skip/warning logging
+    results = {}
+    messages = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_task = {
@@ -299,7 +270,6 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
                         if msg:
                             messages.append((wav_file.relative_to(source_dir).as_posix(), msg))
                     else:
-                        # skip
                         rel_path = wav_file.relative_to(source_dir).as_posix()
                         messages.append((rel_path, msg))
                 except Exception as e:
@@ -307,7 +277,7 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
                     messages.append((rel_path, f"skip: unhandled exception - {str(e)}"))
                 pbar.update(1)
 
-    # 保存消息记录（包括 skip 和 warning）
+    # 保存消息记录
     if messages:
         msg_csv = target_dir / "processing_messages.csv"
         msg_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -315,10 +285,10 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
         df_msg.to_csv(msg_csv, index=False, encoding="utf-8-sig")
         print(f"\nSaved {len(messages)} messages to {msg_csv}")
 
-    # 收集成功处理的 npz 列表（保持与 tasks 顺序无关，但需要与 lengths 同步）
+    # 收集成功处理的样本
     len_list = []
     npz_list = []
-    for (csv_file, wav_file) in tasks:
+    for csv_file, wav_file in tasks:
         if (csv_file, wav_file) in results:
             length, npz_path = results[(csv_file, wav_file)]
             len_list.append(length)
@@ -328,7 +298,7 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
         print("No valid samples processed. Exiting.")
         return
 
-    # 划分训练/验证集（基于 npz 文件名）
+    # 划分训练/验证集
     if val_list is not None:
         if val_encoding:
             with open(val_list, "r", encoding=val_encoding) as f:
@@ -339,7 +309,6 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type, epsilon,
     else:
         val_indices = sorted(numpy.random.choice(len(len_list), min(val_num, len(len_list)), replace=False))
 
-    # 写入 train.txt 和 valid.txt
     lengths = []
     with open(target_dir / "train.txt", "w") as f:
         for i, npz_file in enumerate(npz_list):

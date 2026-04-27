@@ -35,13 +35,10 @@ LIPS_DISTANCE = 4
 @click.option(
     '--attr_type', default=SUBTRACTED_JAW_OPEN, type=int,
     help=(
-            'Attribute type for processing '
-            '[0: jawOpen, 1: mouthClose, 2: jawOpen * (1 - mouthClose), '
-            '3: jawOpen - mouthClose), 4. LipsDistance].')
-)
-@click.option(
-    '--epsilon', default=0.015, type=float,
-    help='Soft dead zone tolerance (used in conjunction with b_values.json), minor fluctuations below this value will be physically smoothed out.'
+        'Attribute type for processing '
+        '[0: jawOpen, 1: mouthClose, 2: jawOpen * (1 - mouthClose), '
+        '3: jawOpen - mouthClose), 4. LipsDistance].'
+    )
 )
 @click.option(
     '--subtraction_offset', default=0.05, type=float,
@@ -63,7 +60,6 @@ def preprocess(
         val_list: pathlib.Path,
         val_num: int,
         attr_type: int,
-        epsilon: float,
         subtraction_offset: float,
         use_mask: bool,
         sample_rate: int,
@@ -81,15 +77,6 @@ def preprocess(
         "f_min": f_min,
         "f_max": f_max
     }
-    
-    b_values_map = None
-    b_json_path = source_dir / "b_values.json"
-    if b_json_path.exists():
-        with open(b_json_path, "r", encoding="utf-8") as f:
-            raw_b_map = json.load(f)
-        b_values_map = {pathlib.Path(k).as_posix(): v for k, v in raw_b_map.items()}
-    else:
-        print("\n b_values.json not found!")
 
     csv_list = sorted(source_dir.rglob("mouth_data.csv"))
     len_list = []
@@ -117,18 +104,12 @@ def preprocess(
             mouth_close = df["mouthClose"].values
             lips_distance = df["LipsDistance"].values if "LipsDistance" in df.columns else None
             crop_end_time = None
-            csv_rel_posix = csv_file.relative_to(source_dir).as_posix()
             original_x0 = df["TimeStamp"].values[0]
-            crop_end_time = None
 
-            if b_values_map is not None and csv_rel_posix in b_values_map:
-                err_segs = b_values_map[csv_rel_posix].get("error_segments", [])
-                if err_segs:
-                    crop_end_time = err_segs[0][1]   # 只取结束时间
-            else:
-                err_segs = process_error_value(df["TimeStamp"].values, x_raw_diff)
-                if err_segs:
-                    crop_end_time = err_segs[0][1]
+            # 自动检测并裁剪开头错误段
+            err_segs = process_error_value(df["TimeStamp"].values, x_raw_diff)
+            if err_segs:
+                crop_end_time = err_segs[0][1]
 
             if crop_end_time is not None and crop_end_time > original_x0:
                 keep = xs >= crop_end_time
@@ -150,15 +131,7 @@ def preprocess(
             elif attr_type == CORRECTED_JAW_OPEN:
                 ys = jaw_open * (1 - mouth_close)
             elif attr_type == SUBTRACTED_JAW_OPEN:
-                if b_values_map is not None:
-                    if csv_rel_posix in b_values_map:
-                        b_val = b_values_map[csv_rel_posix]["b_val"]
-                        ys = numpy.clip(x_raw_diff - b_val - epsilon, a_min=0.0, a_max=1.0)
-                    else:
-                        bar.write(f"Warning: {csv_rel_posix} is not present in the JSON, skipped!")
-                        continue
-                else:
-                    ys = numpy.clip(x_raw_diff + subtraction_offset, a_min=0.0, a_max=1.0)
+                ys = numpy.clip(x_raw_diff + subtraction_offset, a_min=0.0, a_max=1.0)
             elif attr_type == LIPS_DISTANCE:
                 if lips_distance is None:
                     bar.write(f"Warning: LipsDistance column missing in {csv_file}, skipped")
@@ -166,12 +139,15 @@ def preprocess(
                 ys = lips_distance
             else:
                 raise ValueError(f"Invalid attr_type: {attr_type}")
+
             if len(ys) < 2:
                 bar.write(f"Warning: empty data in {csv_file}")
                 continue
+
             offset = round(sample_rate * xs[0])
             size = round(sample_rate * (xs[-1] - xs[0]))
             xs = xs - xs[0]
+
             # read audio data
             num_samples = None
             for audio_file in csv_file.parent.glob("*.wav"):
@@ -224,6 +200,7 @@ def preprocess(
                 numpy.savez(target_file, spectrogram=mel, curve=curve)
                 len_list.append(mel.shape[0])
                 npz_list.append(target_file.relative_to(target_dir).as_posix())
+
     # split training and validation set
     if val_list is not None:
         with open(val_list, "r", encoding="utf8") as f:
@@ -277,7 +254,6 @@ def ass_to_time_array(ass_file):
             start_seconds = sum(float(x) * 60 ** (2 - i) for i, x in enumerate(start_time.split(":")))
             end_seconds = sum(float(x) * 60 ** (2 - i) for i, x in enumerate(end_time.split(":")))
             time_array.append((start_seconds, end_seconds))
-
     return time_array
 
 
