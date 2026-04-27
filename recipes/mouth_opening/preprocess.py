@@ -144,7 +144,7 @@ def map_segments_to_segment(segments_absolute, seg_start, seg_duration):
 @click.option('--attr_type', default=SUBTRACTED_JAW_OPEN, type=int)
 @click.option('--subtraction_offset', default=0.1, type=float,
               help='Offset for subtracted jawOpen (jawOpen - mouthClose + offset), no upper bound.')
-@click.option("--use_mask", is_flag=True, default=False,
+@click.option("--use_mask", is_flag=True, default=True,
               help="Enable multi-source VAD + breath + ASS masking.")
 @click.option('--breath_model_path', type=click.Path(exists=True, path_type=pathlib.Path),
               help='Path to breath detection ONNX model (required if --use_mask).')
@@ -190,6 +190,7 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type,
             disable_update=True, log_level="ERROR",
             disable_pbar=True, disable_log=True
         )
+        print('fsmn-vad ready')
         # FireRedVAD
         if firered_vad_path:
             vad_cfg = FireRedVadConfig(
@@ -204,6 +205,7 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type,
                 chunk_max_frame=30000
             )
             firered_vad = FireRedVad.from_pretrained(str(firered_vad_path), vad_cfg)
+            print('firered_vad ready')
         else:
             print("Warning: FireRedVAD path not provided, skipping FireRedVAD.")
 
@@ -328,7 +330,14 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type,
                     # 2. FireRedVAD (返回秒)
                     if firered_vad:
                         try:
-                            result, _ = firered_vad.detect(str(audio_file))
+                            # 重采样到 16kHz 并保存临时文件
+                            audio_fr, _ = librosa.load(audio_file, sr=16000, mono=True)
+                            import tempfile, os, soundfile as sf
+                            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+                            os.close(tmp_fd)
+                            sf.write(tmp_path, audio_fr, 16000, subtype='PCM_16')
+                            result, _ = firered_vad.detect(tmp_path)
+                            os.unlink(tmp_path)
                             abs_s = result['timestamps']
                             valid_segments.extend(map_segments_to_segment(abs_s, seg_start_time, seg_duration))
                         except Exception as e:

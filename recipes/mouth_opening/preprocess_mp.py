@@ -25,6 +25,8 @@ import yaml
 sys.path.append(pathlib.Path(__file__).parent.parent.parent.as_posix())
 from lib.transforms import PitchAdjustableMelSpectrogram, dynamic_range_compression_torch
 
+import tempfile, os, soundfile as sf
+
 JAW_OPEN = 0
 MOUTH_CLOSE = 1
 CORRECTED_JAW_OPEN = 2
@@ -231,7 +233,12 @@ def process_single(csv_file, wav_file, args, lock_vad):
 
                 if firered_vad:
                     try:
-                        result, _ = firered_vad.detect(str(wav_file))
+                        audio_fr, _ = librosa.load(wav_file, sr=16000, mono=True)
+                        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
+                        os.close(tmp_fd)
+                        sf.write(tmp_path, audio_fr, 16000, subtype='PCM_16')
+                        result, _ = firered_vad.detect(tmp_path)
+                        os.unlink(tmp_path)
                         abs_s = result['timestamps']
                         valid_segments.extend(map_segments_to_segment(abs_s, seg_start_time, seg_duration))
                     except Exception:
@@ -300,7 +307,7 @@ def process_single(csv_file, wav_file, args, lock_vad):
 @click.option('--val_num', default=5, type=int)
 @click.option('--attr_type', default=SUBTRACTED_JAW_OPEN, type=int)
 @click.option('--subtraction_offset', default=0.1, type=float)
-@click.option("--use_mask", is_flag=True, default=False)
+@click.option("--use_mask", is_flag=True, default=True)
 @click.option('--breath_model_path', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.option('--firered_vad_path', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.option('--silero_vad_path', type=click.Path(exists=True, path_type=pathlib.Path))
