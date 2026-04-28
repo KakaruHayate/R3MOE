@@ -18,24 +18,27 @@ from logger.saver import Saver
 
 
 def calc_r_squared(y_true, y_pred):
-    # R-squared: r^2 = 1 - (SSE / SST)
     ss_res = torch.sum((y_pred - y_true) ** 2)
     mean_y_true = torch.mean(y_true)
     ss_total = torch.sum((y_true - mean_y_true) ** 2)
     r2 = 1 - (ss_res / ss_total) if ss_total != 0 else 0
-
     return r2
+
+
+def calc_pearson(y_true, y_pred):
+    vx = y_true - torch.mean(y_true)
+    vy = y_pred - torch.mean(y_pred)
+    cost = torch.sum(vx * vy) / (torch.sqrt(torch.sum(vx ** 2)) * torch.sqrt(torch.sum(vy ** 2)) + 1e-8)
+    return cost
 
 
 def train_epoch(dataloader, model, device, optimizer, saver, epoch):
     model.train()
     optimizer.train()
     sum_loss = 0
-    # criterion = nn.MSELoss()
     criterion = nn.HuberLoss(reduction='mean')
 
     for itr, (X_gt, y_gt, spk_ids) in enumerate(dataloader):
-        # X: [B, T, in_dims], y: [B, T], spk_ids: [B, ]
         saver.global_step_increment()
         X_gt = X_gt.to(device)
         y_gt = y_gt.to(device)
@@ -46,18 +49,9 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         if saver.global_step % 10 == 0:
             saver.log_info(
                 'epoch: {} | {:3d}/{:3d} | {} | batch/s: {:.2f} | lr: {:.6} | loss: {:.6f} | time: {} | step: {}'
-                .format(
-                    epoch,
-                    itr,
-                    len(dataloader),
-                    saver.exp_name,
-                    10 / saver.get_interval_time(),
-                    current_lr,
-                    loss.item(),
-                    saver.get_total_time(),
-                    saver.global_step
-                )
-            )
+                .format(epoch, itr, len(dataloader), saver.exp_name,
+                        10 / saver.get_interval_time(), current_lr,
+                        loss.item(), saver.get_total_time(), saver.global_step))
         if saver.global_step % 100 == 0:
             saver.log_value({
                 'train/epoch': epoch,
@@ -66,9 +60,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
             })
 
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            model.parameters(), 1.0
-        )
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         model.zero_grad()
 
@@ -83,15 +75,13 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
 
     sum_loss = 0
     sum_mae = 0
-    gt_cache = [] # 在整个验证集取r^2，所以把gt和pred先cache在concat到一起
+    gt_cache = []
     pred_cache = []
     criterion = nn.MSELoss()
 
     with torch.no_grad():
         for idx, (X_gt, y_gt, spk_ids) in enumerate(
-                tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)
-        ):
-            # X: [B, T, in_dims], y: [B, T], spk_ids: [B, ]
+                tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)):
             X_gt = X_gt.to(device)
             y_gt = y_gt.to(device)
             l_pred = model(X_gt, spk_ids)
@@ -102,27 +92,27 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
             gt_cache.append(y_gt)
             pred_cache.append(y_pred)
             sum_mae += torch.nn.functional.l1_loss(y_pred, y_gt).detach().cpu().numpy()
-            if not draw:
-                continue
-            spec_draw = X_gt[0].cpu().numpy()
-            curve_gt_draw = y_gt[0].cpu().numpy()
-            curve_pred_draw = y_pred[0].cpu().numpy()
-            if spec_draw.shape[0] > 1024:
-                spec_draw = spec_draw[:1024]
-                curve_gt_draw = curve_gt_draw[:1024]
-                curve_pred_draw = curve_pred_draw[:1024]
-            saver.log_figure({
-                f'curve_{idx}': logger.utils.draw_plot(
-                    spec=spec_draw,
-                    curve_gt=curve_gt_draw,
-                    curve_pred=curve_pred_draw
-                )
-            })
+            if draw:
+                spec_draw = X_gt[0].cpu().numpy()
+                curve_gt_draw = y_gt[0].cpu().numpy()
+                curve_pred_draw = y_pred[0].cpu().numpy()
+                if spec_draw.shape[0] > 1024:
+                    spec_draw = spec_draw[:1024]
+                    curve_gt_draw = curve_gt_draw[:1024]
+                    curve_pred_draw = curve_pred_draw[:1024]
+                saver.log_figure({
+                    f'curve_{idx}': logger.utils.draw_plot(
+                        spec=spec_draw,
+                        curve_gt=curve_gt_draw,
+                        curve_pred=curve_pred_draw
+                    )
+                })
 
     mean_loss = sum_loss / len(dataloader.dataset)
     r_squared = calc_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
     mean_mae = sum_mae / len(dataloader.dataset)
-    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(mean_loss, mean_mae, r_squared))
+    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(
+        mean_loss, mean_mae, r_squared))
     saver.log_value({
         'validation/loss': mean_loss,
         'validation/mae': mean_mae,
@@ -131,11 +121,61 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
     return mean_loss
 
 
+def validate_epoch2(dataloader, model, device, optimizer, saver, draw=False):
+    """仅计算 Pearson 系数的验证（无监督/未见说话人）"""
+    model.eval()
+    optimizer.eval()
+
+    gt_cache = []
+    pred_cache = []
+
+    with torch.no_grad():
+        for idx, (X_gt, y_gt) in enumerate(
+                tqdm.tqdm(dataloader, total=len(dataloader), desc='validation_unseen', leave=False)):
+            X_gt = X_gt.to(device)
+            y_gt = y_gt.to(device)
+            l_pred = model(X_gt)      # 无 spk_ids 输入
+            y_pred = model.denormalize(l_pred)
+            gt_cache.append(y_gt)
+            pred_cache.append(y_pred)
+
+            if draw:
+                spec_draw = X_gt[0].cpu().numpy()
+                curve_gt_draw = y_gt[0].cpu().numpy()
+                curve_pred_draw = y_pred[0].cpu().numpy()
+                if spec_draw.shape[0] > 1024:
+                    spec_draw = spec_draw[:1024]
+                    curve_gt_draw = curve_gt_draw[:1024]
+                    curve_pred_draw = curve_pred_draw[:1024]
+                saver.log_figure({
+                    f'curve_unseen_{idx}': logger.utils.draw_plot(
+                        spec=spec_draw,
+                        curve_gt=curve_gt_draw,
+                        curve_pred=curve_pred_draw
+                    )
+                })
+
+    gt_all = torch.cat(gt_cache, dim=1).view(-1)
+    pred_all = torch.cat(pred_cache, dim=1).view(-1)
+    pearson = calc_pearson(gt_all, pred_all)
+
+    saver.log_info(' --- <validation_unseen> --- Pearson: {:.6f}'.format(pearson))
+    saver.log_value({
+        'validation/pearson_unseen': pearson
+    })
+    return pearson
+
+
+def worker_init_fn(worker_id):
+    np.random.seed(torch.initial_seed() % 2**32)
+    random.seed(torch.initial_seed() % 2**32)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--exp_name', '-N', type=str, default="model_test")
     p.add_argument('--dataset', '-d', required=True)
-    p.add_argument('--vmin', type=float, default=0.)
+    p.add_argument('--vmin', type=float, default=-0.15)
     p.add_argument('--vmax', type=float, default=1.)
     p.add_argument('--batchsize', '-B', type=int, default=16)
     p.add_argument('--cropsize', '-C', type=int, default=128)
@@ -159,23 +199,33 @@ def main():
     train_dataset = dataset.CurveTrainingDataset(
         args.dataset,
         crop_size=args.cropsize,
-        volume_aug_rate=0.5, 
+        volume_aug_rate=0.5,
         use_spk_id=True
     )
-
+    # 新 Dataset 内部已随机，故关闭外部 shuffle
     train_dataloader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         batch_size=args.batchsize,
-        shuffle=True,
+        shuffle=False,
         num_workers=args.num_workers,
+        worker_init_fn=worker_init_fn, 
         persistent_workers=(args.num_workers > 0),
         pin_memory=True
     )
 
     val_dataset = dataset.CurveValidationDataset(args.dataset, True)
-
     val_dataloader = torch.utils.data.DataLoader(
         dataset=val_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True
+    )
+
+    # 新增 unseen 验证集
+    val_dataset2 = dataset.CurveValidationDataset2(args.dataset)
+    val_dataloader2 = torch.utils.data.DataLoader(
+        dataset=val_dataset2,
         batch_size=1,
         shuffle=False,
         num_workers=0,
@@ -196,7 +246,7 @@ def main():
         'conv_dims': args.conv_dims,
         'hidden_dims': args.hidden_dims,
         'n_layers': args.n_layers,
-        'conv_dropout': args.conv_dropout, 
+        'conv_dropout': args.conv_dropout,
         'num_speakers': num_speakers
     }
     model = nets.BiLSTMCurveEstimator(**model_args)
@@ -208,7 +258,7 @@ def main():
         model.to(device)
 
     optimizer = schedulefree.AdamWScheduleFree(
-        filter(lambda parameter: parameter.requires_grad, model.parameters()), 
+        filter(lambda parameter: parameter.requires_grad, model.parameters()),
         lr=args.learning_rate
     )
 
@@ -228,6 +278,11 @@ def main():
         _ = train_epoch(train_dataloader, model, device, optimizer, saver, epoch)
         val_loss = validate_epoch(
             val_dataloader, model, device, optimizer, saver,
+            draw=(epoch + 1) % args.plot_epoch_interval == 0
+        )
+        # 计算 unseen 验证集的 Pearson
+        _ = validate_epoch2(
+            val_dataloader2, model, device, optimizer, saver,
             draw=(epoch + 1) % args.plot_epoch_interval == 0
         )
 

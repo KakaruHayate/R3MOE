@@ -65,7 +65,7 @@ def load_breath_model(breath_model_path):
         raise FileNotFoundError(f"Breath model config not found: {config_path}")
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
-    session = ort.InferenceSession(breath_model_path)
+    session = ort.InferenceSession(breath_model_path, providers=['DmlExecutionProvider', 'CPUExecutionProvider'])
     time_scale = 1.0 / (config['audio_sample_rate'] / config['hop_size'])
     return session, config, time_scale
 

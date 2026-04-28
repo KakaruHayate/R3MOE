@@ -64,6 +64,7 @@ class BiLSTMCurveEstimator(nn.Module):
 
         # post process
         self.k_filter = nn.Parameter(torch.ones(num_speakers))
+        self.p0 = (0.0 - self.vmin) / (self.vmax - self.vmin)
 
     def forward(self, x: torch.Tensor, spk_id: torch.Tensor=None) -> torch.Tensor:
         """
@@ -78,7 +79,8 @@ class BiLSTMCurveEstimator(nn.Module):
         x = self.output_proj(x)
         if spk_id is not None:
             k_filter = self.k_filter[spk_id].view(-1, *([1]*(x.dim()-1)))
-            x = x * k_filter
+            k_filter = torch.clamp(k_filter, min=0.2, max=2.5)
+            x = (x - self.p0) * k_filter + self.p0
         return x.squeeze(-1)  # normalized curve (B, T)
 
     def normalize(self, x: torch.Tensor) -> torch.Tensor:
