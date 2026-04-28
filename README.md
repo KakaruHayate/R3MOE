@@ -45,9 +45,7 @@ Run training:
 ```bash
 python train.py --exp_name <EXP_NAME> --dataset <DATA_PATH> --gpu <GPU_ID>
 ```
-View all options with `python train.py --help`. Variants:
-- `train_r_drop.py` (R-Drop regularization)
-- `train_mse.py` (MSE loss)
+View all options with `python train.py --help`. 
 
 ## SSL Training
 

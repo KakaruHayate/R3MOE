@@ -163,9 +163,9 @@ class MouthBakerUI:
         self.model = BiLSTMCurveEstimator(**filter_kwargs(model_args, BiLSTMCurveEstimator))
         checkpoint = torch.load(model_path, map_location="cpu")
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         else:
-            self.model.load_state_dict(checkpoint)
+            self.model.load_state_dict(checkpoint, strict=False)
             
         self.model.eval()
         self.model.to(self.device)

@@ -45,9 +45,7 @@ pip install -r requirements.txt
 ```bash
 python train.py --exp_name <实验名称> --dataset <数据集路径> --gpu <GPU编号>
 ```
-参数说明可通过`python train.py --help`查看。其他变体脚本：
-- `train_r_drop.py`（R-Drop正则化）
-- `train_mse.py`（MSE损失）
+参数说明可通过`python train.py --help`查看。
 
 ## 半监督训练
 

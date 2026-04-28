@@ -86,7 +86,7 @@ class CurveEstimator:
             **filter_kwargs(model_args, BiLSTMCurveEstimator)
         )
         # 强制 map_location="cpu"
-        self.model.load_state_dict(torch.load(path_obj, map_location="cpu"))
+        self.model.load_state_dict(torch.load(path_obj, map_location="cpu"), strict=False)
         self.model.eval()
         self.model.to(self.device)
         self.resample_kernels = {}

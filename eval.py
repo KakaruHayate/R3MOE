@@ -55,7 +55,7 @@ class CurveEstimator:
         self.model = BiLSTMCurveEstimator(
             **filter_kwargs(model_args, BiLSTMCurveEstimator)
         )
-        self.model.load_state_dict(torch.load(model_path, map_location="cpu"))
+        self.model.load_state_dict(torch.load(model_path, map_location="cpu"), strict=False)
         self.model.eval()
         self.model.to(device)
         self.resample_kernels = {}
