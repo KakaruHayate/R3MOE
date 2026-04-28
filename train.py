@@ -42,9 +42,13 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
         saver.global_step_increment()
         X_gt = X_gt.to(device)
         y_gt = y_gt.to(device)
+        if spk_ids is not None:
+            spk_ids = spk_ids.to(device)
         l_pred = model(X_gt, spk_ids)
         l_gt = model.normalize(y_gt)
-        loss = criterion(l_pred, l_gt)
+        sigma = 0.1
+        weights = torch.exp(-l_gt.abs() / sigma)
+        loss = (weights * criterion(l_pred, l_gt)).mean()
         current_lr = optimizer.param_groups[0]['lr']
         if saver.global_step % 10 == 0:
             saver.log_info(
@@ -84,6 +88,8 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
                 tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)):
             X_gt = X_gt.to(device)
             y_gt = y_gt.to(device)
+            if spk_ids is not None:
+                spk_ids = spk_ids.to(device)
             l_pred = model(X_gt, spk_ids)
             l_gt = model.normalize(y_gt)
             loss = criterion(l_pred, l_gt)
