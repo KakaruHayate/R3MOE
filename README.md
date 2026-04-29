@@ -83,8 +83,6 @@ Unlabeled:
 
 [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
 
-[tiny-singing-voice-database](https://github.com/najeebkhan/tiny-singing-voice-database)
-
 [OpenSinger](https://Multi-Singer.github.io/)
 
 [GTSinger](https://aaronz345.github.io/GTSingerDemo/home)

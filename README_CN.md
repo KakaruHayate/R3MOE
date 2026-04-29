@@ -83,8 +83,6 @@ python train_ssl.py --exp_name <实验名称> --dataset <数据集路径> --unla
 
 [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
 
-[tiny-singing-voice-database](https://github.com/najeebkhan/tiny-singing-voice-database)
-
 [OpenSinger](https://Multi-Singer.github.io/)
 
 [GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
