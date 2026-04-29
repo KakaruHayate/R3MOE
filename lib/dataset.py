@@ -76,8 +76,8 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         spectrogram = data['spectrogram']    # (T, mel)
         curve = data['curve']                # (T,)
         
-        mask = curve > 0
-        curve[mask] -= 0.1
+        #mask = curve > 0
+        #curve[mask] -= 0.1
 
         # 2. 随机裁剪
         T = spectrogram.shape[0]
@@ -147,8 +147,8 @@ class OldCurveTrainingDataset(torch.utils.data.Dataset):
         spectrogram = data['spectrogram']
         curve = data['curve']
         
-        mask = curve > 0
-        curve[mask] -= 0.1
+        #mask = curve > 0
+        #curve[mask] -= 0.1
         
         if data['spectrogram'].shape[0] < self.crop_size:
             # choose another random file
@@ -194,8 +194,9 @@ class CurveValidationDataset(torch.utils.data.Dataset):
         data = np.load(self.files[idx])
         
         curve = data['curve']
-        mask = curve > 0
-        curve[mask] -= 0.1
+        
+        #mask = curve > 0
+        #curve[mask] -= 0.1
         
         if self.use_spk_id:
             return data['spectrogram'], curve, self.spk_ids[idx]
@@ -218,8 +219,9 @@ class CurveValidationDataset2(torch.utils.data.Dataset): # unseen测试集
         data = np.load(self.files[idx])
         
         curve = data['curve']
-        mask = curve > 0
-        curve[mask] -= 0.1
+        
+        #mask = curve > 0
+        #curve[mask] -= 0.1
         
         return data['spectrogram'], curve
 

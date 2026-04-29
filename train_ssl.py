@@ -69,6 +69,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
 
         X_gt = X_gt.to(device)
         y_gt = y_gt.to(device)
+        spk_ids = spk_ids.to(device)
         X_unlabel = X_unlabel.to(device)
         X_unlabel1 = X_unlabel1.to(device)
         X_unlabel2 = X_unlabel2.to(device)
@@ -140,6 +141,7 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
                 tqdm.tqdm(dataloader, total=len(dataloader), desc='validation', leave=False)):
             X_gt = X_gt.to(device)
             y_gt = y_gt.to(device)
+            spk_ids = spk_ids.to(device)
             l_pred = model(X_gt, spk_ids)
             l_gt = model.normalize(y_gt)
             loss = criterion(l_pred, l_gt)

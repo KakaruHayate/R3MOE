@@ -142,9 +142,9 @@ def map_segments_to_segment(segments_absolute, seg_start, seg_duration):
               help='Validation file list (relative paths, one per line).')
 @click.option('--val_num', default=5, type=int)
 @click.option('--attr_type', default=SUBTRACTED_JAW_OPEN, type=int)
-@click.option('--subtraction_offset', default=0.1, type=float,
+@click.option('--subtraction_offset', default=0.0, type=float,
               help='Offset for subtracted jawOpen (jawOpen - mouthClose + offset), no upper bound.')
-@click.option("--use_mask", is_flag=True, default=True,
+@click.option("--use_mask", is_flag=True, default=False,
               help="Enable multi-source VAD + breath + ASS masking.")
 @click.option('--breath_model_path', type=click.Path(exists=True, path_type=pathlib.Path),
               help='Path to breath detection ONNX model (required if --use_mask).')
@@ -271,7 +271,7 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type,
             elif attr_type == CORRECTED_JAW_OPEN:
                 ys = jaw_open * (1 - mouth_close)
             elif attr_type == SUBTRACTED_JAW_OPEN:
-                ys = numpy.maximum(x_raw_diff + subtraction_offset, 0.0)
+                ys = x_raw_diff + subtraction_offset
             elif attr_type == LIPS_DISTANCE:
                 if lips_distance is None:
                     bar.write(f"Warning: LipsDistance column missing in {csv_file}, skipped")
@@ -307,10 +307,6 @@ def preprocess(source_dir, target_dir, val_list, val_num, attr_type,
                                          fill_value="extrapolate", bounds_error=False)
                     t_mel = numpy.linspace(0, len(audio_segment) / sample_rate, mel.shape[0])
                     curve = interp_fn(t_mel).astype(numpy.float32)
-                # 修复潜在的 NaN（如重复时间点导致除零）
-                if numpy.any(numpy.isnan(curve)):
-                    curve = numpy.nan_to_num(curve, nan=0.0, posinf=0.0, neginf=0.0)
-                    bar.write(f"Warning: NaN in interpolated curve for {audio_file}, fixed with zeros")
 
                 # ---------- 多源掩码构建 ----------
                 if use_mask:

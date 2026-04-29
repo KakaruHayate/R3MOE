@@ -183,7 +183,7 @@ def process_single(csv_file, wav_file, args, lock_vad):
         elif attr_type == CORRECTED_JAW_OPEN:
             ys = jaw_open * (1 - mouth_close)
         elif attr_type == SUBTRACTED_JAW_OPEN:
-            ys = numpy.maximum(x_raw_diff + subtraction_offset, 0.0)
+            ys = x_raw_diff + subtraction_offset
         elif attr_type == LIPS_DISTANCE:
             if lips_distance is None:
                 return False, None, None, "skip: LipsDistance column missing"
@@ -212,8 +212,8 @@ def process_single(csv_file, wav_file, args, lock_vad):
             warnings.simplefilter("always")
             interp_fn = interp1d(xs_rel, ys, kind="linear", fill_value="extrapolate", bounds_error=False)
             curve = interp_fn(t_mel).astype(numpy.float32)
-        if numpy.any(numpy.isnan(curve)):
-            curve = numpy.nan_to_num(curve, nan=0.0, posinf=0.0, neginf=0.0)
+        #if numpy.any(numpy.isnan(curve)):
+        #    curve = numpy.nan_to_num(curve, nan=0.0, posinf=0.0, neginf=0.0)
 
         # ---------- 多源掩码 ----------
         if use_mask:
@@ -306,8 +306,8 @@ def process_single(csv_file, wav_file, args, lock_vad):
 @click.option('--val_list', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.option('--val_num', default=5, type=int)
 @click.option('--attr_type', default=SUBTRACTED_JAW_OPEN, type=int)
-@click.option('--subtraction_offset', default=0.1, type=float)
-@click.option("--use_mask", is_flag=True, default=True)
+@click.option('--subtraction_offset', default=0.0, type=float)
+@click.option("--use_mask", is_flag=True, default=False)
 @click.option('--breath_model_path', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.option('--firered_vad_path', type=click.Path(exists=True, path_type=pathlib.Path))
 @click.option('--silero_vad_path', type=click.Path(exists=True, path_type=pathlib.Path))
