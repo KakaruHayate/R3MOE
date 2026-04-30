@@ -19,9 +19,8 @@ from lib.transforms import PitchAdjustableMelSpectrogram, dynamic_range_compress
 
 MODEL_REGISTRY = {
     # "显示在下拉框的名称": "实际的.pth文件路径"
-    "0715s2k1": "./experiments/0715_ope_s2_k/ema_model_4.pt",
-    "0715s2k2": "./experiments/0715_ope_s2_k2/ema_model_7.pt",
-    "0322s2k": "./experiments/0322_ope_s2_k/ema_model_4.pt",
+    "1212s2k": "./experiments/1212s2k/ema_model_8.pt",
+    "0430_s2k": "./experiments/0430_s2k/ema_model_2.pt"
 }
 
 # 默认选中的模型名称 (必须在上面的 keys 中)
@@ -86,7 +85,9 @@ class CurveEstimator:
             **filter_kwargs(model_args, BiLSTMCurveEstimator)
         )
         # 强制 map_location="cpu"
-        self.model.load_state_dict(torch.load(path_obj, map_location="cpu"), strict=False)
+        state_dict = torch.load(path_obj, map_location="cpu")
+        filtered_state_dict = {k: v for k, v in state_dict.items() if 'k_filter' not in k}
+        self.model.load_state_dict(filtered_state_dict, strict=False)
         self.model.eval()
         self.model.to(self.device)
         self.resample_kernels = {}

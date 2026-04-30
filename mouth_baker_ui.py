@@ -163,9 +163,13 @@ class MouthBakerUI:
         self.model = BiLSTMCurveEstimator(**filter_kwargs(model_args, BiLSTMCurveEstimator))
         checkpoint = torch.load(model_path, map_location="cpu")
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-            self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+            state_dict = checkpoint['model_state_dict']
         else:
-            self.model.load_state_dict(checkpoint, strict=False)
+            state_dict = checkpoint
+
+        # 过滤掉所有包含 "k_filter" 的键
+        filtered_state_dict = {k: v for k, v in state_dict.items() if 'k_filter' not in k}
+        self.model.load_state_dict(filtered_state_dict, strict=False)
             
         self.model.eval()
         self.model.to(self.device)
