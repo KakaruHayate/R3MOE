@@ -1,0 +1,16 @@
+dataset_args:
+  f_max: null
+  f_min: 0
+  hop_size: 320
+  mel_bins: 80
+  sample_rate: 16000
+  win_size: 1024
+model_args:
+  conv_dims: 256
+  conv_dropout: 0.2
+  hidden_dims: 512
+  in_dims: 80
+  n_layers: 2
+  num_speakers: 80
+  vmax: 1.0
+  vmin: -0.15
