@@ -1,5 +1,7 @@
 # R^3 - M · O · E
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/KakaruHayate/R3MOE)
+
 [RecurrentNN × Regression × Regularized] 基础的半监督开口度估计
 
 【循环神经网络 × 回归 × 正则化】
