@@ -65,29 +65,29 @@ python train_ssl.py --exp_name <实验名称> --dataset <数据集路径> --unla
 - 未标注数据建议准备数十小时
 - 我在试验中使用的数据集：
 
-标记数据：
-
-[mouth opening research project](https://github.com/openvpi/DiffSinger/discussions/235)
-
-多模态数据：
-
-[GRID](https://zenodo.org/records/3625687)
-
-[URSing](https://zenodo.org/records/6404999)
-
-未标记数据：
-
-[PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB), 
-
-[PopCS](https://drive.google.com/file/d/1uFJmPEUWbzguGBdiuupYvYbBEjopN-Xq/view?usp=sharing) from [DiffSinger](https://github.com/MoonInTheRiver/DiffSinger/), 
-
-[M4Singer](https://github.com/M4Singer/M4Singer)
-
-[Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
-
-[OpenSinger](https://Multi-Singer.github.io/)
-
-[GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
+    **标记数据：**
+    
+    [mouth opening research project](https://github.com/openvpi/DiffSinger/discussions/235)
+    
+    **多模态数据：**
+    
+    [GRID](https://zenodo.org/records/3625687)
+    
+    [URSing](https://zenodo.org/records/6404999)
+    
+    **未标记数据：**
+    
+    [PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB), 
+    
+    [PopCS](https://drive.google.com/file/d/1uFJmPEUWbzguGBdiuupYvYbBEjopN-Xq/view?usp=sharing) from [DiffSinger](https://github.com/MoonInTheRiver/DiffSinger/), 
+    
+    [M4Singer](https://github.com/M4Singer/M4Singer)
+    
+    [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
+    
+    [OpenSinger](https://Multi-Singer.github.io/)
+    
+    [GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
 
 ## 推理
 
