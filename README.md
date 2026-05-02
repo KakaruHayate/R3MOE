@@ -1,5 +1,7 @@
 # R^3 - M · O · E
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/KakaruHayate/R3MOE)
+
 [RecurrentNN × Regression × Regularized] based Mouth Opening Estimation via SSL
 
 [中文文档](https://github.com/KakaruHayate/R3MOE/blob/main/README_CN.md)
