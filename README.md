@@ -65,29 +65,29 @@ Prerequisites:
 - Prepare 50+ hours of unlabeled data
 - Tested datasets:
 
-Labeled:
-
-[mouth opening research project](https://github.com/openvpi/DiffSinger/discussions/235)
-
-MultiModal:
-
-[GRID](https://zenodo.org/records/3625687)
-
-[URSing](https://zenodo.org/records/6404999)
-
-Unlabeled:
-
-[PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB)
-
-[PopCS](https://drive.google.com/file/d/1uFJmPEUWbzguGBdiuupYvYbBEjopN-Xq/view?usp=sharing) from [DiffSinger](https://github.com/MoonInTheRiver/DiffSinger/)
-
-[M4Singer](https://github.com/M4Singer/M4Singer)
-
-[Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
-
-[OpenSinger](https://Multi-Singer.github.io/)
-
-[GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
+    **Labeled:**
+    
+    [mouth opening research project](https://github.com/openvpi/DiffSinger/discussions/235)
+    
+    **MultiModal:**
+    
+    [GRID](https://zenodo.org/records/3625687)
+    
+    [URSing](https://zenodo.org/records/6404999)
+    
+    **Unlabeled:**
+    
+    [PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB)
+    
+    [PopCS](https://drive.google.com/file/d/1uFJmPEUWbzguGBdiuupYvYbBEjopN-Xq/view?usp=sharing) from [DiffSinger](https://github.com/MoonInTheRiver/DiffSinger/)
+    
+    [M4Singer](https://github.com/M4Singer/M4Singer)
+    
+    [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
+    
+    [OpenSinger](https://Multi-Singer.github.io/)
+    
+    [GTSinger](https://aaronz345.github.io/GTSingerDemo/home)
 
 ## Inference
 
