@@ -83,7 +83,7 @@ Prerequisites:
     
     [M4Singer](https://github.com/M4Singer/M4Singer)
     
-    [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
+    [Jingju a cappella singing dataset part1](https://zenodo.org/records/344932)
     
     [OpenSinger](https://Multi-Singer.github.io/)
     
