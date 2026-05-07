@@ -141,3 +141,71 @@ def high_band_mask(mel, max_mask=3, freq_start=40):  # 假设高频起始于第4
         f = np.random.randint(freq_start, mel.shape[1])
         mel[:, f:f+1] = 0  # 掩码单个频带
     return mel
+
+def time_frequency_noise_block(mel: torch.Tensor, num_blocks: int = 5, 
+                               max_time_ratio: float = 0.3, max_freq_ratio: float = 0.05, 
+                               noise_mode: str = 'add', noise_std: float = 0.1, 
+                               eps: float = 1e-5) -> torch.Tensor:
+    """
+    Places random rectangular noise blocks on the spectrogram in the linear domain. 
+    Can simulate transient interference (additive noise) or localized 
+    information loss (erasing).
+    """
+    linear_mel = torch.exp(mel).clone()
+    n_mels, n_frames = linear_mel.shape[-2], linear_mel.shape[-1]
+    
+    for _ in range(num_blocks):
+        # Calculate random block dimensions
+        block_freq = max(1, int(max_freq_ratio * n_mels * torch.rand(1).item()))
+        block_time = max(1, int(max_time_ratio * n_frames * torch.rand(1).item()))
+
+        # Calculate random start positions
+        f0 = torch.randint(0, n_mels - block_freq + 1, (1,)).item()
+        t0 = torch.randint(0, n_frames - block_time + 1, (1,)).item()
+
+        if noise_mode == 'add':
+            noise = torch.abs(torch.randn_like(linear_mel[..., f0:f0+block_freq, t0:t0+block_time])) * noise_std
+            linear_mel[..., f0:f0+block_freq, t0:t0+block_time] += noise
+            
+        elif noise_mode == 'replace':
+            linear_mel[..., f0:f0+block_freq, t0:t0+block_time] = eps
+            
+    return torch.log(torch.clamp(linear_mel, min=eps))
+
+def add_diverse_background_noise(mel: torch.Tensor, noise_level: float = 0.001, 
+                                 noise_type: str = 'random', eps: float = 1e-5) -> torch.Tensor:
+    """
+    Simulates various types of physical background noise by applying spectral tilts 
+    in the linear Mel-frequency domain.
+    """
+    linear_mel = torch.exp(mel).clone()
+    n_mels = linear_mel.shape[-2]
+    
+    noise = torch.abs(torch.randn_like(linear_mel))
+    
+    types = ['white', 'pink', 'brown', 'bandpass']
+    current_type = noise_type
+    if current_type == 'random':
+        idx = torch.randint(0, len(types), (1,)).item()
+        current_type = types[idx]
+        
+    if current_type == 'pink':
+        freq_idx = torch.arange(1, n_mels + 1, device=mel.device).view(-1, 1).float()
+        tilt = 1.0 / torch.sqrt(freq_idx)
+        noise = noise * tilt
+        
+    elif current_type == 'brown':
+        freq_idx = torch.arange(1, n_mels + 1, device=mel.device).view(-1, 1).float()
+        tilt = 1.0 / freq_idx
+        noise = noise * tilt
+        
+    elif current_type == 'bandpass':
+        band_width = torch.randint(n_mels // 8, n_mels // 3 + 1, (1,)).item()
+        start_f = torch.randint(0, n_mels - band_width + 1, (1,)).item()
+        
+        mask = torch.zeros_like(noise)
+        mask[..., start_f:start_f + band_width, :] = 1.0
+        noise = noise * mask * 1.5 
+        
+    linear_mel = linear_mel + (noise * noise_level)
+    return torch.log(torch.clamp(linear_mel, min=eps))

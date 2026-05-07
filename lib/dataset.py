@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch.utils.data
 
-from lib.transforms import high_band_mask
+from lib.transforms import high_band_mask, add_diverse_background_noise, time_frequency_noise_block
 
 
 class CurveTrainingDataset(torch.utils.data.Dataset):
@@ -14,6 +14,8 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         root_dir: pathlib.Path,
         crop_size: int = 128,
         volume_aug_rate: float = 0.5,
+        time_freq_noise_prob: float = 0.2,
+        bg_noise_prob: float = 0.2,
         use_spk_id: bool = False
     ):
         if not isinstance(root_dir, pathlib.Path):
@@ -26,6 +28,8 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         self.root_dir = root_dir
         self.crop_size = crop_size
         self.volume_aug_rate = volume_aug_rate
+        self.time_freq_noise_prob = time_freq_noise_prob
+        self.bg_noise_prob = bg_noise_prob
 
         # 读取文件列表
         self.files = []
@@ -47,7 +51,7 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         self.valid_lengths = self.lengths[self.valid_indices]   # 有效长度数组
         self.total_valid_frames = int(sum(self.valid_lengths))  # 总帧数
 
-        # 计算 epoch 总采样数（与原逻辑一致）
+        # 计算 epoch 总采样数
         self.epoch_samples = self.total_valid_frames // self.crop_size
 
         # 处理 speaker ID
@@ -61,13 +65,10 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
                 self.spk_ids.append(spk_mapping[spk_name])
 
     def __len__(self):
-        # epoch 长度 = 总有效帧数 // crop_size
         return self.epoch_samples
 
     def __getitem__(self, idx):
-        # idx 在此方案中被忽略，每次完全随机采样
         # 1. 按帧数加权随机选择一个有效文件
-        #    使用累积分分布函数高效采样
         weights = self.valid_lengths / self.total_valid_frames
         i = np.random.choice(len(self.valid_indices), p=weights)
 
@@ -76,9 +77,6 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         spectrogram = data['spectrogram']    # (T, mel)
         curve = data['curve']                # (T,)
         
-        #mask = curve > 0
-        #curve[mask] -= 0.1
-
         # 2. 随机裁剪
         T = spectrogram.shape[0]
         start = random.randint(0, T - self.crop_size)
@@ -89,6 +87,23 @@ class CurveTrainingDataset(torch.utils.data.Dataset):
         if random.random() < self.volume_aug_rate:
             cropped_spectrogram = cropped_spectrogram + np.random.uniform(-3, 3)
         cropped_spectrogram = np.clip(cropped_spectrogram, a_min=-12, a_max=None)
+
+        # ====== 新增: 独立应用的两种高级数据增强 ======
+        apply_tf = random.random() < self.time_freq_noise_prob
+        apply_bg = random.random() < self.bg_noise_prob
+
+        if apply_tf or apply_bg:
+            # np.ndarray -> torch.Tensor
+            mel_tensor = torch.from_numpy(cropped_spectrogram).float()
+            
+            if apply_tf:
+                mel_tensor = time_frequency_noise_block(mel_tensor)
+            if apply_bg:
+                mel_tensor = add_diverse_background_noise(mel_tensor)
+                
+            # torch.Tensor -> np.ndarray
+            cropped_spectrogram = mel_tensor.numpy()
+        # ============================================
 
         # 4. 返回
         if self.use_spk_id:
@@ -248,7 +263,9 @@ class UnlabelTrainingDataset(torch.utils.data.Dataset):
             self,
             root_dir: pathlib.Path,
             crop_size: int = 128,
-            volume_aug_rate: float = 0.5
+            volume_aug_rate: float = 0.5,
+            time_freq_noise_prob: float = 0.2,
+            bg_noise_prob: float = 0.2
     ):
         if not isinstance(root_dir, pathlib.Path):
             root_dir = pathlib.Path(root_dir)
@@ -259,6 +276,8 @@ class UnlabelTrainingDataset(torch.utils.data.Dataset):
         self.root_dir = root_dir
         self.crop_size = crop_size
         self.volume_aug_rate = volume_aug_rate
+        self.time_freq_noise_prob = time_freq_noise_prob
+        self.bg_noise_prob = bg_noise_prob
 
         # 读取文件列表
         self.files = []
@@ -279,7 +298,6 @@ class UnlabelTrainingDataset(torch.utils.data.Dataset):
         self.valid_lengths = self.lengths[self.valid_indices]   # 有效帧数数组
         self.total_valid_frames = int(sum(self.valid_lengths))  # 总有效帧数
 
-        # 每个 epoch 的采样次数（总帧数 // crop_size）
         self.epoch_samples = self.total_valid_frames // self.crop_size
 
     def __len__(self):
@@ -316,7 +334,29 @@ class UnlabelTrainingDataset(torch.utils.data.Dataset):
         spectrogram2 = np.clip(spectrogram2, a_min=-12, a_max=None)
         cropped_spectrogram = np.clip(cropped_spectrogram, a_min=-12, a_max=None)
 
-        # 原注释的 dropout 增强可在此处添加
+        # ====== 新增: 分别对这两个副本独立应用两种高级增强 ======
+        # 对 spectrogram1
+        apply_tf1 = random.random() < self.time_freq_noise_prob
+        apply_bg1 = random.random() < self.bg_noise_prob
+        if apply_tf1 or apply_bg1:
+            mel_tensor1 = torch.from_numpy(spectrogram1).float()
+            if apply_tf1:
+                mel_tensor1 = time_frequency_noise_block(mel_tensor1)
+            if apply_bg1:
+                mel_tensor1 = add_diverse_background_noise(mel_tensor1)
+            spectrogram1 = mel_tensor1.numpy()
+
+        # 对 spectrogram2
+        apply_tf2 = random.random() < self.time_freq_noise_prob
+        apply_bg2 = random.random() < self.bg_noise_prob
+        if apply_tf2 or apply_bg2:
+            mel_tensor2 = torch.from_numpy(spectrogram2).float()
+            if apply_tf2:
+                mel_tensor2 = time_frequency_noise_block(mel_tensor2)
+            if apply_bg2:
+                mel_tensor2 = add_diverse_background_noise(mel_tensor2)
+            spectrogram2 = mel_tensor2.numpy()
+        # ======================================================
 
         return cropped_spectrogram, spectrogram1, spectrogram2
 
