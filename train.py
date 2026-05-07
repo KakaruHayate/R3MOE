@@ -115,14 +115,18 @@ def validate_epoch(dataloader, model, device, optimizer, saver, draw=False):
                 })
 
     mean_loss = sum_loss / len(dataloader.dataset)
-    r_squared = calc_r_squared(torch.cat(gt_cache, dim=1), torch.cat(pred_cache, dim=1))
+    gt_all = torch.cat(gt_cache, dim=1)
+    pred_all = torch.cat(pred_cache, dim=1)
+    pearson = calc_pearson(gt_all.view(-1), pred_all.view(-1))
+    r_squared = calc_r_squared(gt_all, pred_all)
     mean_mae = sum_mae / len(dataloader.dataset)
-    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f}'.format(
-        mean_loss, mean_mae, r_squared))
+    saver.log_info(' --- <validation> --- loss: {:.6f} MAE: {:.6f} R_squared: {:.6f} Pearson: {:.6f}'.format(
+        mean_loss, mean_mae, r_squared, pearson))
     saver.log_value({
         'validation/loss': mean_loss,
         'validation/mae': mean_mae,
-        'validation/r_squared': r_squared
+        'validation/r_squared': r_squared, 
+        'validation/pearson': pearson, 
     })
     return mean_loss
 
