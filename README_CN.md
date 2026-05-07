@@ -83,7 +83,7 @@ python train_ssl.py --exp_name <实验名称> --dataset <数据集路径> --unla
     
     [M4Singer](https://github.com/M4Singer/M4Singer)
     
-    [Jingju a Cappella Recordings Collection](https://zenodo.org/records/6536490)
+    [Jingju a cappella singing dataset part1](https://zenodo.org/records/344932)
     
     [OpenSinger](https://Multi-Singer.github.io/)
     
