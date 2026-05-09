@@ -75,6 +75,10 @@ python train_ssl.py --exp_name <实验名称> --dataset <数据集路径> --unla
     
     [URSing](https://zenodo.org/records/6404999)
     
+    [LombardGrid](https://spandh.dcs.shef.ac.uk/avlombard/)
+    
+    [RAVDESS](https://zenodo.org/records/1188976)
+    
     **未标记数据：**
     
     [PopBuTFy](https://drive.google.com/file/d/1IKFp7y1WeYGrwXgJ0HC3rdPj54WoqIsU/view) from [NeuralSVB](https://github.com/MoonInTheRiver/NeuralSVB), 
