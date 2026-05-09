@@ -46,7 +46,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch):
             spk_ids = spk_ids.to(device)
         l_pred = model(X_gt, spk_ids)
         l_gt = model.normalize(y_gt)
-        sigma = 0.1
+        sigma = 0.15
         weights = torch.exp(-l_gt.abs() / sigma)
         loss = (weights * criterion(l_pred, l_gt)).mean()
         current_lr = optimizer.param_groups[0]['lr']

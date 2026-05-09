@@ -78,7 +78,7 @@ def train_epoch(dataloader, model, device, optimizer, saver, epoch, ema_model, d
         l_pred1 = model(X_gt, spk_ids)
         l_pred2 = model(X_gt.detach(), spk_ids.detach())
         l_gt = model.normalize(y_gt)
-        sigma = 0.1
+        sigma = 0.15
         weights = torch.exp(-l_gt.abs() / sigma)
         loss = (weights * (criterion(l_pred1, l_gt) + criterion(l_pred2, l_gt)) * 0.5).mean()
         r_drop_loss = criterion(l_pred1, l_pred2)
