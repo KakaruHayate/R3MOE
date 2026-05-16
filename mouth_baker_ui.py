@@ -329,7 +329,7 @@ class MouthBakerUI:
             mel = dynamic_range_compression_torch(mel, clip_val=1e-5).transpose(1, 2).to(self.device)
             
             with torch.no_grad():
-                dl_out = self.model(mel).squeeze(0).squeeze(-1).cpu() 
+                dl_out = self.model.infer(mel).squeeze(0).squeeze(-1).cpu() 
             
             win_size = self.hparams["dataset_args"]["win_size"]
             hop_size = self.hparams["dataset_args"]["hop_size"]

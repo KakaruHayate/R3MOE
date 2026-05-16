@@ -84,7 +84,7 @@ class CurveEstimator:
         
         mel = dynamic_range_compression_torch(mel_spec, clip_val=1e-5).transpose(1, 2)
         
-        pred_curve = self.model(mel).squeeze(0).cpu().numpy().squeeze()
+        pred_curve = self.model.infer(mel).squeeze(0).cpu().numpy().squeeze()
         
         target_length = length if length is not None else len(pred_curve)
 
