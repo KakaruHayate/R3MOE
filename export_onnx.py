@@ -76,7 +76,7 @@ class ONNXMelSpectrogram(nn.Module):
         )
         # 此时 spec 的 shape 为 [B, n_fft/2+1, T, 2]，最后一维是实部和虚部
         # 手动计算幅值 (Magnitude) = sqrt(real^2 + imag^2)，加上 1e-9 防止出现梯度/计算异常
-        spec = torch.sqrt(spec.pow(2).sum(dim=-1) + 1e-9)
+        spec = torch.sqrt(torch.sum(spec ** 2, dim=-1))
 
         # Mel 滤波
         mel_spec = torch.matmul(self.mel_basis, spec)
